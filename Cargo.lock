@@ -5,3 +5,10 @@ version = 3
 [[package]]
 name = "crafting_interpreters"
 version = "0.1.0"
+dependencies = [
+ "tree_walk_interpreter",
+]
+
+[[package]]
+name = "tree_walk_interpreter"
+version = "0.1.0"

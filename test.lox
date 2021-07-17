@@ -1,0 +1,14 @@
+var x = 0;
+
+for (var i = 0; i < 10; i = i + 1) {
+	print x;
+	x = x + 1;
+}
+
+/*
+
+This is a multine
+comment
+		and stuff
+
+*/ var y = x;
