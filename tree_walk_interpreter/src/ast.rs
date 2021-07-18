@@ -22,6 +22,7 @@ pub(crate) enum Expr<'e> {
 
 #[derive(Debug)]
 pub(crate) enum Stmt<'s> {
+    Block(Vec<Stmt<'s>>),
     Expr(Expr<'s>),
     Print(Expr<'s>),
     Var(Token<'s>, Option<Expr<'s>>),

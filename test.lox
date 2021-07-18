@@ -1,12 +1,5 @@
-print "one";
-print 2;
-print 3 > 2;
-
-var x = "this is ";
-var y;
-
-print x + "string";
-
-print y;
-
-print 3;
+var a = 1;
+{
+  var a = a + 2;
+  print a;
+}

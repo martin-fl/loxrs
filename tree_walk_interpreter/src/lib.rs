@@ -8,3 +8,4 @@ mod scanner;
 mod token;
 
 pub use lox::Lox;
+pub use std::*;

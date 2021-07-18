@@ -108,6 +108,8 @@ impl<'p> Parser<'p> {
     fn statement(&mut self) -> Result<Stmt<'p>, ParserError<'p>> {
         if self.current_is_any_of(&[TokenType::Print]) {
             self.print_statement()
+        } else if self.current_is_any_of(&[TokenType::LeftBrace]) {
+            self.block()
         } else {
             self.expression_statement()
         }
@@ -115,13 +117,24 @@ impl<'p> Parser<'p> {
 
     fn print_statement(&mut self) -> Result<Stmt<'p>, ParserError<'p>> {
         let expr = self.expression()?;
-        self.consume_until(TokenType::Semicolon, "Expect ';' after value.")?;
+        self.consume_until(TokenType::Semicolon, "Expected ';' after value.")?;
         Ok(Stmt::Print(expr))
+    }
+
+    fn block(&mut self) -> Result<Stmt<'p>, ParserError<'p>> {
+        let mut statements = Vec::new();
+
+        while !self.current_is(&TokenType::RightBrace) && !self.is_at_end() {
+            statements.push(self.declaration()?);
+        }
+
+        self.consume_until(TokenType::RightBrace, "Expected '}' after block.")?;
+        Ok(Stmt::Block(statements))
     }
 
     fn expression_statement(&mut self) -> Result<Stmt<'p>, ParserError<'p>> {
         let expr = self.expression()?;
-        self.consume_until(TokenType::Semicolon, "Expect ';' after value.")?;
+        self.consume_until(TokenType::Semicolon, "Expected ';' after value.")?;
         Ok(Stmt::Expr(expr))
     }
 

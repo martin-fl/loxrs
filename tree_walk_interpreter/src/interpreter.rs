@@ -3,13 +3,26 @@ use crate::token::{Token, TokenType};
 
 use std::collections::HashMap;
 
+use std::cell::RefCell;
+use std::rc::Rc;
+
+#[derive(Clone)]
 pub(crate) struct Environment {
+    enclosing: Option<Rc<RefCell<Environment>>>,
     values: HashMap<String, Literal>,
 }
 
 impl Environment {
     pub(crate) fn new() -> Self {
         Self {
+            enclosing: None,
+            values: HashMap::new(),
+        }
+    }
+
+    pub(crate) fn new_within(enclosing: Rc<RefCell<Environment>>) -> Self {
+        Self {
+            enclosing: Some(enclosing),
             values: HashMap::new(),
         }
     }
@@ -19,24 +32,42 @@ impl Environment {
     }
 
     pub(crate) fn get<'a>(&self, name: Token<'a>) -> Result<Literal, InterpreterError<'a>> {
-        self.values
-            .get(name.lexeme)
-            .ok_or_else(|| {
-                InterpreterError::new(
-                    name.clone(),
-                    &format!("Undefined variable '{}'", name.lexeme),
-                )
-            })
-            .cloned()
+        if self.values.contains_key(name.lexeme) {
+            self.values
+                .get(name.lexeme)
+                .ok_or_else(|| {
+                    InterpreterError::new(
+                        name.clone(),
+                        &format!("Undefined variable '{}'", name.lexeme),
+                    )
+                })
+                .cloned()
+        } else if let Some(enclosing) = &self.enclosing {
+            (**enclosing).borrow().get(name)
+        } else {
+            Err(InterpreterError::new(
+                name.clone(),
+                &format!("Undefined variable '{}'", name.lexeme),
+            ))
+        }
     }
 
-    pub(crate) fn assign<'a>(&mut self, name: Token<'a>, value: Literal) -> Result<(), InterpreterError<'a>>{
+    pub(crate) fn assign<'a>(
+        &mut self,
+        name: Token<'a>,
+        value: Literal,
+    ) -> Result<(), InterpreterError<'a>> {
         if self.values.contains_key(name.lexeme) {
             self.values.insert(name.lexeme.to_string(), value);
-            return Ok(());
+            Ok(())
+        } else if let Some(enclosing) = &mut self.enclosing {
+            (**enclosing).borrow_mut().assign(name, value)
+        } else {
+            Err(InterpreterError::new(
+                name.clone(),
+                &format!("Undefined variable '{}'", name.lexeme),
+            ))
         }
-        
-        Err(InterpreterError::new(name.clone(), &format!("Undefined variable '{}'", name.lexeme)))
     }
 }
 
@@ -56,14 +87,14 @@ impl<'e> InterpreterError<'e> {
 }
 
 pub(crate) struct Interpreter {
-    env: Environment,
+    env: Rc<RefCell<Environment>>,
 }
 
 // TODO: Detail the interpreter errors
 impl Interpreter {
     pub fn new() -> Self {
         Self {
-            env: Environment::new(),
+            env: Rc::new(RefCell::new(Environment::new())),
         }
     }
 
@@ -179,18 +210,27 @@ impl Interpreter {
                     _ => Err(InterpreterError::new(op, "Unknown operator")),
                 }
             }
-            Expr::Variable(name) => self.env.get(name),
+            Expr::Variable(name) => (*self.env).borrow().get(name),
             Expr::Assign(name, box value) => {
                 let value = self.evaluate(value)?;
-                self.env.assign(name, value.clone())?;
+                (*self.env).borrow_mut().assign(name, value.clone())?;
                 Ok(value)
             }
-            _ => unimplemented!(),
         }
     }
 
     pub(crate) fn execute<'a>(&mut self, statement: Stmt<'a>) -> Result<(), InterpreterError<'a>> {
         match statement {
+            Stmt::Block(statements) => {
+                let previous = Rc::clone(&self.env);
+                let env = Environment::new_within(Rc::clone(&self.env));
+                self.env = Rc::new(RefCell::new(env));
+                for statement in statements {
+                    self.execute(statement)?;
+                }
+                (*self.env).swap(&*previous); 
+                Ok(())
+            }
             Stmt::Expr(expr) => self.evaluate(expr).map(|_| ()),
             Stmt::Print(expr) => self.evaluate(expr).map(|lit| println!("{}", lit)),
             Stmt::Var(name, init) => {
@@ -199,7 +239,9 @@ impl Interpreter {
                     None => Literal::Nil,
                 };
 
-                self.env.define(name.lexeme.to_string(), value);
+                (*self.env)
+                    .borrow_mut()
+                    .define(name.lexeme.to_string(), value);
                 Ok(())
             }
         }
