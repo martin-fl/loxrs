@@ -1,6 +1,5 @@
-#[derive(Debug, PartialEq, Clone, Copy)]
-#[allow(dead_code)]
-pub(crate) enum TokenType<'tok> {
+#[derive(Debug, PartialEq, Clone)]
+pub(crate) enum TokenType {
     // Length-1 tokens
     LeftParen,
     RightParen,
@@ -25,7 +24,7 @@ pub(crate) enum TokenType<'tok> {
     LessEqual,
     // Literals
     Identifier,
-    String(&'tok str),
+    String(String),
     Number(f64),
 
     // Keywords
@@ -49,8 +48,8 @@ pub(crate) enum TokenType<'tok> {
     EOF,
 }
 
-impl<'tok> TokenType<'tok> {
-    pub(crate) fn try_to_keyword(lexeme: &str) -> Option<TokenType<'tok>> {
+impl TokenType {
+    pub(crate) fn try_to_keyword(lexeme: &str) -> Option<TokenType> {
         use TokenType::*;
         match lexeme {
             "and" => Some(And),
@@ -74,15 +73,15 @@ impl<'tok> TokenType<'tok> {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub(crate) struct Token<'tok> {
-    pub ty: TokenType<'tok>,
+    pub ty: TokenType,
     pub lexeme: &'tok str,
     pub line: usize,
 }
 
 impl<'tok> Token<'tok> {
-    pub fn new(ty: TokenType<'tok>, lexeme: &'tok str, line: usize) -> Self {
+    pub fn new(ty: TokenType, lexeme: &'tok str, line: usize) -> Self {
         Self { ty, lexeme, line }
     }
 }

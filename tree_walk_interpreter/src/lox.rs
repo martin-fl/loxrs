@@ -4,17 +4,20 @@ use std::io::{self, Read, Write};
 use crate::parser::Parser;
 use crate::scanner::Scanner;
 use crate::token::{Token, TokenType};
+use crate::interpreter::Interpreter;
 
 pub(crate) enum LoxError<'e> {
     FromScanner(usize, String),
     FromParser(Token<'e>, String),
+    FromInterpreter(Token<'e>, String),
 }
 
 impl<'a> LoxError<'a> {
     pub(crate) fn report(&self) {
         let (line, where_, message) = match self {
             LoxError::FromScanner(line, message) => (*line, "".to_string(), message),
-            LoxError::FromParser(token, message) => match token.ty {
+            LoxError::FromParser(token, message) 
+                | LoxError::FromInterpreter(token, message) => match token.ty {
                 TokenType::EOF => (token.line, " at end".to_string(), message),
                 _ => (token.line, format!(" at '{}'", token.lexeme), message),
             },
@@ -37,7 +40,8 @@ impl Lox {
             .parse()
             .map_err(|e| LoxError::FromParser(e.token.clone(), e.message))?;
 
-        println!("{}", tree);
+        Interpreter::interpret(tree).map_err(|e| LoxError::FromInterpreter(e.token.clone(), e.message))?;
+        
         Ok(())
     }
 

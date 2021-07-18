@@ -1,21 +1,33 @@
 use crate::token::Token;
 use std::fmt;
 
-#[allow(dead_code)]
-pub(crate) enum Expr<'e> {
-    Binary(Box<Expr<'e>>, Token<'e>, Box<Expr<'e>>),
-    Grouping(Box<Expr<'e>>),
-    Literal(Literal<'e>),
-    Unary(Token<'e>, Box<Expr<'e>>),
-}
-
-#[allow(dead_code)]
-pub(crate) enum Literal<'lit> {
+#[derive(PartialEq)]
+pub(crate) enum Literal {
     Number(f64),
-    String(&'lit str),
+    String(String),
     True,
     False,
     Nil,
+}
+
+pub(crate) enum Expr<'e> {
+    Binary(Box<Expr<'e>>, Token<'e>, Box<Expr<'e>>),
+    Grouping(Box<Expr<'e>>),
+    Literal(Literal),
+    Unary(Token<'e>, Box<Expr<'e>>),
+}
+
+
+impl fmt::Display for Literal {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Literal::Number(x) => write!(f, "{}", x),
+            Literal::String(s) => write!(f, "\"{}\"", s),
+            Literal::True => write!(f, "true"),
+            Literal::False => write!(f, "false"),
+            Literal::Nil => write!(f, "nil"),
+        }
+    }
 }
 
 impl<'e> fmt::Display for Expr<'e> {
@@ -27,13 +39,7 @@ impl<'e> fmt::Display for Expr<'e> {
             Expr::Grouping(box expr) => {
                 write!(f, "(group {})", expr)
             }
-            Expr::Literal(lit) => match lit {
-                Literal::Number(x) => write!(f, "{}", x),
-                Literal::String(s) => write!(f, "{}", s),
-                Literal::True => write!(f, "true"),
-                Literal::False => write!(f, "false"),
-                Literal::Nil => write!(f, "nil"),
-            },
+            Expr::Literal(lit) => write!(f, "{}", lit),
             Expr::Unary(tok, box expr) => write!(f, "({} {})", tok.lexeme, expr),
         }
     }

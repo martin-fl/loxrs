@@ -178,7 +178,7 @@ impl<'scanner> Scanner<'scanner> {
         self.advance();
 
         let value = &self.source[(self.start + 1)..(self.current - 1)];
-        self.add_token(TokenType::String(value));
+        self.add_token(TokenType::String(value.to_string()));
 
         Ok(())
     }
@@ -214,7 +214,7 @@ impl<'scanner> Scanner<'scanner> {
         Ok(())
     }
 
-    fn add_token(&mut self, ty: TokenType<'scanner>) {
+    fn add_token(&mut self, ty: TokenType) {
         let lexeme = &self.source[self.start..self.current];
         self.tokens.push(Token::new(ty, lexeme, self.line));
     }

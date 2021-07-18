@@ -17,11 +17,11 @@ impl<'p> Parser<'p> {
     }
 
     fn previous(&self) -> Token<'p> {
-        self.tokens[self.current - 1]
+        self.tokens[self.current - 1].clone()
     }
 
     fn peek(&self) -> Token<'p> {
-        self.tokens[self.current]
+        self.tokens[self.current].clone()
     }
 
     fn is_at_end(&self) -> bool {
@@ -35,16 +35,16 @@ impl<'p> Parser<'p> {
         self.previous()
     }
 
-    fn current_is(&self, ty: TokenType) -> bool {
+    fn current_is(&self, ty: &TokenType) -> bool {
         if self.is_at_end() {
             false
         } else {
-            self.peek().ty == ty
+            &self.peek().ty == ty
         }
     }
 
     fn current_is_any_of(&mut self, tys: &[TokenType]) -> bool {
-        for &ty in tys {
+        for ty in tys {
             if self.current_is(ty) {
                 self.advance();
                 return true;
@@ -143,28 +143,28 @@ impl<'p> Parser<'p> {
                 self.advance();
                 Ok(Expr::Literal(Literal::Number(x)))
             }
-            TokenType::String(ref s) => {
+            TokenType::String(s) => {
                 self.advance();
-                Ok(Expr::Literal(Literal::String(s)))
+                Ok(Expr::Literal(Literal::String(s.to_string())))
             }
             TokenType::LeftParen => {
                 self.advance();
                 let expr = self.expression()?;
                 self.consume(
                     TokenType::RightParen,
-                    "Expect ')' after expression.".to_string(),
+                    "Expected ')' after expression.".to_string(),
                 )?;
                 Ok(Expr::Grouping(Box::new(expr)))
             }
             _ => Err(ParserError {
                 token: self.peek(),
-                message: "Expect expression".to_string(),
+                message: "Expected expression".to_string(),
             }),
         }
     }
 
     fn consume(&mut self, ty: TokenType, message: String) -> Result<Token<'p>, ParserError<'p>> {
-        if self.current_is(ty) {
+        if self.current_is(&ty) {
             Ok(self.advance())
         } else {
             Err(ParserError {
