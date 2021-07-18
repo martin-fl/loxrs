@@ -2,8 +2,9 @@
 
 mod ast;
 mod interpreter;
+mod lox;
 mod parser;
 mod scanner;
 mod token;
 
-pub use interpreter::Interpreter;
+pub use lox::Lox;

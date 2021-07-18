@@ -78,7 +78,7 @@ impl<'tok> TokenType<'tok> {
 pub(crate) struct Token<'tok> {
     pub ty: TokenType<'tok>,
     pub lexeme: &'tok str,
-    line: usize,
+    pub line: usize,
 }
 
 impl<'tok> Token<'tok> {

@@ -1,6 +1,7 @@
-use crate::token::{Token, TokenType};
+use crate::token::Token;
 use std::fmt;
 
+#[allow(dead_code)]
 pub(crate) enum Expr<'e> {
     Binary(Box<Expr<'e>>, Token<'e>, Box<Expr<'e>>),
     Grouping(Box<Expr<'e>>),
@@ -8,6 +9,7 @@ pub(crate) enum Expr<'e> {
     Unary(Token<'e>, Box<Expr<'e>>),
 }
 
+#[allow(dead_code)]
 pub(crate) enum Literal<'lit> {
     Number(f64),
     String(&'lit str),
