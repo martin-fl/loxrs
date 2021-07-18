@@ -22,10 +22,14 @@ pub(crate) enum TokenType {
     GreaterEqual,
     Less,
     LessEqual,
+
     // Literals
     Identifier,
     String(String),
     Number(f64),
+    True,
+    False,
+    Nil,
 
     // Keywords
     And,
@@ -37,13 +41,10 @@ pub(crate) enum TokenType {
     Else,
     For,
     While,
-    True,
-    False,
     Fun,
     Return,
     Var,
     Print,
-    Nil,
 
     EOF,
 }

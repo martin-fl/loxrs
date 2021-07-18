@@ -7,12 +7,12 @@ pub(crate) struct ScannerError {
 }
 
 pub(crate) struct Scanner<'scanner> {
-    source: &'scanner str,
-    source_chars: Vec<char>,
-    tokens: Vec<Token<'scanner>>,
-    start: usize,
-    current: usize,
-    line: usize,
+    pub source: &'scanner str,
+    pub source_chars: Vec<char>,
+    pub tokens: Vec<Token<'scanner>>,
+    pub start: usize,
+    pub current: usize,
+    pub line: usize,
 }
 
 impl<'scanner> Scanner<'scanner> {
@@ -47,16 +47,46 @@ impl<'scanner> Scanner<'scanner> {
 
         use TokenType::*;
         match c {
-            '(' => Ok(self.add_token(LeftParen)),
-            ')' => Ok(self.add_token(RightParen)),
-            '{' => Ok(self.add_token(LeftBrace)),
-            '}' => Ok(self.add_token(RightBrace)),
-            ',' => Ok(self.add_token(Comma)),
-            '.' => Ok(self.add_token(Dot)),
-            '-' => Ok(self.add_token(Minus)),
-            '+' => Ok(self.add_token(Plus)),
-            ';' => Ok(self.add_token(Semicolon)),
-            '*' => Ok(self.add_token(Star)),
+            '(' => {
+                self.add_token(LeftParen);
+                Ok(())
+            }
+            ')' => {
+                self.add_token(RightParen);
+                Ok(())
+            }
+            '{' => {
+                self.add_token(LeftBrace);
+                Ok(())
+            }
+            '}' => {
+                self.add_token(RightBrace);
+                Ok(())
+            }
+            ',' => {
+                self.add_token(Comma);
+                Ok(())
+            }
+            '.' => {
+                self.add_token(Dot);
+                Ok(())
+            }
+            '-' => {
+                self.add_token(Minus);
+                Ok(())
+            }
+            '+' => {
+                self.add_token(Plus);
+                Ok(())
+            }
+            ';' => {
+                self.add_token(Semicolon);
+                Ok(())
+            }
+            '*' => {
+                self.add_token(Star);
+                Ok(())
+            }
 
             '!' => {
                 let tok = if self.current_is('=') {
@@ -65,7 +95,8 @@ impl<'scanner> Scanner<'scanner> {
                     Bang
                 };
 
-                Ok(self.add_token(tok))
+                self.add_token(tok);
+                Ok(())
             }
             '=' => {
                 let tok = if self.current_is('=') {
@@ -74,7 +105,8 @@ impl<'scanner> Scanner<'scanner> {
                     Equal
                 };
 
-                Ok(self.add_token(tok))
+                self.add_token(tok);
+                Ok(())
             }
             '<' => {
                 let tok = if self.current_is('=') {
@@ -83,7 +115,8 @@ impl<'scanner> Scanner<'scanner> {
                     Less
                 };
 
-                Ok(self.add_token(tok))
+                self.add_token(tok);
+                Ok(())
             }
             '>' => {
                 let tok = if self.current_is('=') {
@@ -92,7 +125,8 @@ impl<'scanner> Scanner<'scanner> {
                     Greater
                 };
 
-                Ok(self.add_token(tok))
+                self.add_token(tok);
+                Ok(())
             }
             '/' => {
                 if self.current_is('/') {
@@ -115,7 +149,10 @@ impl<'scanner> Scanner<'scanner> {
             }
 
             ' ' | '\r' | '\t' => Ok(()),
-            '\n' => Ok(self.line += 1),
+            '\n' => {
+                self.line += 1;
+                Ok(())
+            }
 
             '"' => self.handle_string_literal(),
             n if n.is_ascii_digit() => self.handle_number_literal(),
@@ -150,9 +187,7 @@ impl<'scanner> Scanner<'scanner> {
     }
 
     fn current_is(&mut self, expected: char) -> bool {
-        if self.is_at_end() {
-            false
-        } else if self.source_chars[self.current] != expected {
+        if self.is_at_end() || self.source_chars[self.current] != expected {
             false
         } else {
             self.current += 1;

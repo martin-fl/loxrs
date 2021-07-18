@@ -1,4 +1,4 @@
-#![feature(box_patterns)]
+#![feature(box_patterns, result_cloned)]
 
 mod ast;
 mod interpreter;
