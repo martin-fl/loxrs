@@ -1,11 +1,10 @@
 #![feature(box_patterns, result_cloned)]
 
-mod ast;
-mod interpreter;
-mod lox;
-mod parser;
-mod scanner;
-mod token;
+pub mod ast;
+pub mod interpreter;
+pub mod lox;
+pub mod parser;
+pub mod scanner;
+pub mod token;
 
 pub use lox::Lox;
-pub use std::*;

@@ -1,22 +1,22 @@
 use crate::token::{Token, TokenType};
 
 #[derive(Debug)]
-pub(crate) struct ScannerError {
-    pub line: usize,
-    pub message: String,
+pub struct ScannerError {
+    pub(crate) line: usize,
+    pub(crate) message: String,
 }
 
-pub(crate) struct Scanner<'scanner> {
-    pub source: &'scanner str,
-    pub source_chars: Vec<char>,
-    pub tokens: Vec<Token<'scanner>>,
-    pub start: usize,
-    pub current: usize,
-    pub line: usize,
+pub struct Scanner<'scanner> {
+    pub(crate) source: &'scanner str,
+    pub(crate) source_chars: Vec<char>,
+    pub(crate) tokens: Vec<Token<'scanner>>,
+    pub(crate) start: usize,
+    pub(crate) current: usize,
+    pub(crate) line: usize,
 }
 
 impl<'scanner> Scanner<'scanner> {
-    pub(crate) fn new(source: &'scanner str) -> Self {
+    pub fn new(source: &'scanner str) -> Self {
         Self {
             source,
             source_chars: source.chars().collect(),
@@ -27,11 +27,11 @@ impl<'scanner> Scanner<'scanner> {
         }
     }
 
-    fn is_at_end(&self) -> bool {
+    pub(crate) fn is_at_end(&self) -> bool {
         self.current >= self.source.len()
     }
 
-    pub(crate) fn scan_tokens(mut self) -> Result<Vec<Token<'scanner>>, ScannerError> {
+    pub fn scan_tokens(mut self) -> Result<Vec<Token<'scanner>>, ScannerError> {
         while !self.is_at_end() {
             self.start = self.current;
             self.scan_token()?;
@@ -42,7 +42,7 @@ impl<'scanner> Scanner<'scanner> {
         Ok(self.tokens)
     }
 
-    fn scan_token(&mut self) -> Result<(), ScannerError> {
+    pub(crate) fn scan_token(&mut self) -> Result<(), ScannerError> {
         let c = self.advance();
 
         use TokenType::*;
@@ -165,7 +165,7 @@ impl<'scanner> Scanner<'scanner> {
         }
     }
 
-    fn peek(&self) -> char {
+    pub(crate) fn peek(&self) -> char {
         if self.is_at_end() {
             '\0'
         } else {
@@ -173,7 +173,7 @@ impl<'scanner> Scanner<'scanner> {
         }
     }
 
-    fn peek_next(&self) -> char {
+    pub(crate) fn peek_next(&self) -> char {
         if self.current + 1 >= self.source.len() {
             '\0'
         } else {
@@ -181,12 +181,12 @@ impl<'scanner> Scanner<'scanner> {
         }
     }
 
-    fn advance(&mut self) -> char {
+    pub(crate) fn advance(&mut self) -> char {
         self.current += 1;
         self.source_chars[self.current - 1]
     }
 
-    fn current_is(&mut self, expected: char) -> bool {
+    pub(crate) fn current_is(&mut self, expected: char) -> bool {
         if self.is_at_end() || self.source_chars[self.current] != expected {
             false
         } else {
@@ -195,7 +195,7 @@ impl<'scanner> Scanner<'scanner> {
         }
     }
 
-    fn handle_string_literal(&mut self) -> Result<(), ScannerError> {
+    pub(crate) fn handle_string_literal(&mut self) -> Result<(), ScannerError> {
         while self.peek() != '"' && !self.is_at_end() {
             if self.peek() == '\n' {
                 self.line += 1;
@@ -218,7 +218,7 @@ impl<'scanner> Scanner<'scanner> {
         Ok(())
     }
 
-    fn handle_number_literal(&mut self) -> Result<(), ScannerError> {
+    pub(crate) fn handle_number_literal(&mut self) -> Result<(), ScannerError> {
         while self.peek().is_ascii_digit() {
             self.advance();
         }
@@ -239,7 +239,7 @@ impl<'scanner> Scanner<'scanner> {
         Ok(())
     }
 
-    fn handle_identifier(&mut self) -> Result<(), ScannerError> {
+    pub(crate) fn handle_identifier(&mut self) -> Result<(), ScannerError> {
         while self.peek().is_ascii_alphanumeric() || self.peek() == '_' {
             self.advance();
         }
@@ -249,7 +249,7 @@ impl<'scanner> Scanner<'scanner> {
         Ok(())
     }
 
-    fn add_token(&mut self, ty: TokenType) {
+    pub(crate) fn add_token(&mut self, ty: TokenType) {
         let lexeme = &self.source[self.start..self.current];
         self.tokens.push(Token::new(ty, lexeme, self.line));
     }

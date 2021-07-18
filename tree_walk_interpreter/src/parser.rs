@@ -1,14 +1,14 @@
 use crate::ast::{Expr, Literal, Stmt};
 use crate::token::{Token, TokenType};
 
-pub(crate) struct ParserError<'e> {
-    pub token: Token<'e>,
-    pub message: String,
+pub struct ParserError<'e> {
+    pub(crate) token: Token<'e>,
+    pub(crate) message: String,
 }
 
-pub(crate) struct Parser<'p> {
-    pub tokens: Vec<Token<'p>>,
-    pub current: usize,
+pub struct Parser<'p> {
+    pub(crate) tokens: Vec<Token<'p>>,
+    pub(crate) current: usize,
 }
 
 impl<'p> Parser<'p> {
@@ -16,26 +16,26 @@ impl<'p> Parser<'p> {
         Self { tokens, current: 0 }
     }
 
-    fn previous(&self) -> Token<'p> {
+    pub(crate) fn previous(&self) -> Token<'p> {
         self.tokens[self.current - 1].clone()
     }
 
-    fn peek(&self) -> Token<'p> {
+    pub(crate) fn peek(&self) -> Token<'p> {
         self.tokens[self.current].clone()
     }
 
-    fn is_at_end(&self) -> bool {
+    pub(crate) fn is_at_end(&self) -> bool {
         self.peek().ty == TokenType::EOF
     }
 
-    fn advance(&mut self) -> Token<'p> {
+    pub(crate) fn advance(&mut self) -> Token<'p> {
         if !self.is_at_end() {
             self.current += 1;
         }
         self.previous()
     }
 
-    fn current_is(&self, ty: &TokenType) -> bool {
+    pub(crate) fn current_is(&self, ty: &TokenType) -> bool {
         if self.is_at_end() {
             false
         } else {
@@ -43,7 +43,7 @@ impl<'p> Parser<'p> {
         }
     }
 
-    fn current_is_any_of(&mut self, tys: &[TokenType]) -> bool {
+    pub(crate) fn current_is_any_of(&mut self, tys: &[TokenType]) -> bool {
         for ty in tys {
             if self.current_is(ty) {
                 self.advance();
@@ -54,7 +54,7 @@ impl<'p> Parser<'p> {
         false
     }
 
-    pub(crate) fn parse(&mut self) -> Result<Vec<Stmt<'p>>, Vec<ParserError<'p>>> {
+    pub fn parse(&mut self) -> Result<Vec<Stmt<'p>>, Vec<ParserError<'p>>> {
         let mut statements = Vec::new();
         let mut errors = Vec::new();
 
@@ -74,7 +74,7 @@ impl<'p> Parser<'p> {
         }
     }
 
-    fn declaration(&mut self) -> Result<Stmt<'p>, ParserError<'p>> {
+    pub(crate) fn declaration(&mut self) -> Result<Stmt<'p>, ParserError<'p>> {
         let ret = if self.current_is_any_of(&[TokenType::Var]) {
             self.var_declaration()
         } else {
@@ -88,7 +88,7 @@ impl<'p> Parser<'p> {
         ret
     }
 
-    fn var_declaration(&mut self) -> Result<Stmt<'p>, ParserError<'p>> {
+    pub(crate) fn var_declaration(&mut self) -> Result<Stmt<'p>, ParserError<'p>> {
         let name = self.consume_until(TokenType::Identifier, "Expected variable name")?;
 
         let initializer = if self.current_is_any_of(&[TokenType::Equal]) {
@@ -105,7 +105,7 @@ impl<'p> Parser<'p> {
         Ok(Stmt::Var(name, initializer))
     }
 
-    fn statement(&mut self) -> Result<Stmt<'p>, ParserError<'p>> {
+    pub(crate) fn statement(&mut self) -> Result<Stmt<'p>, ParserError<'p>> {
         if self.current_is_any_of(&[TokenType::Print]) {
             self.print_statement()
         } else if self.current_is_any_of(&[TokenType::LeftBrace]) {
@@ -115,13 +115,13 @@ impl<'p> Parser<'p> {
         }
     }
 
-    fn print_statement(&mut self) -> Result<Stmt<'p>, ParserError<'p>> {
+    pub(crate) fn print_statement(&mut self) -> Result<Stmt<'p>, ParserError<'p>> {
         let expr = self.expression()?;
         self.consume_until(TokenType::Semicolon, "Expected ';' after value.")?;
         Ok(Stmt::Print(expr))
     }
 
-    fn block(&mut self) -> Result<Stmt<'p>, ParserError<'p>> {
+    pub(crate) fn block(&mut self) -> Result<Stmt<'p>, ParserError<'p>> {
         let mut statements = Vec::new();
 
         while !self.current_is(&TokenType::RightBrace) && !self.is_at_end() {
@@ -132,17 +132,17 @@ impl<'p> Parser<'p> {
         Ok(Stmt::Block(statements))
     }
 
-    fn expression_statement(&mut self) -> Result<Stmt<'p>, ParserError<'p>> {
+    pub(crate) fn expression_statement(&mut self) -> Result<Stmt<'p>, ParserError<'p>> {
         let expr = self.expression()?;
         self.consume_until(TokenType::Semicolon, "Expected ';' after value.")?;
         Ok(Stmt::Expr(expr))
     }
 
-    fn expression(&mut self) -> Result<Expr<'p>, ParserError<'p>> {
+    pub(crate) fn expression(&mut self) -> Result<Expr<'p>, ParserError<'p>> {
         self.assignment()
     }
 
-    fn assignment(&mut self) -> Result<Expr<'p>, ParserError<'p>> {
+    pub(crate) fn assignment(&mut self) -> Result<Expr<'p>, ParserError<'p>> {
         let expr = self.equality()?;
 
         if self.current_is_any_of(&[TokenType::Equal]) {
@@ -162,7 +162,7 @@ impl<'p> Parser<'p> {
         Ok(expr)
     }
 
-    fn equality(&mut self) -> Result<Expr<'p>, ParserError<'p>> {
+    pub(crate) fn equality(&mut self) -> Result<Expr<'p>, ParserError<'p>> {
         let mut expr = self.comparison()?;
 
         while self.current_is_any_of(&[TokenType::BangEqual, TokenType::EqualEqual]) {
@@ -174,7 +174,7 @@ impl<'p> Parser<'p> {
         Ok(expr)
     }
 
-    fn comparison(&mut self) -> Result<Expr<'p>, ParserError<'p>> {
+    pub(crate) fn comparison(&mut self) -> Result<Expr<'p>, ParserError<'p>> {
         let mut expr = self.term()?;
 
         while self.current_is_any_of(&[
@@ -191,7 +191,7 @@ impl<'p> Parser<'p> {
         Ok(expr)
     }
 
-    fn term(&mut self) -> Result<Expr<'p>, ParserError<'p>> {
+    pub(crate) fn term(&mut self) -> Result<Expr<'p>, ParserError<'p>> {
         let mut expr = self.factor()?;
 
         while self.current_is_any_of(&[TokenType::Plus, TokenType::Minus]) {
@@ -203,7 +203,7 @@ impl<'p> Parser<'p> {
         Ok(expr)
     }
 
-    fn factor(&mut self) -> Result<Expr<'p>, ParserError<'p>> {
+    pub(crate) fn factor(&mut self) -> Result<Expr<'p>, ParserError<'p>> {
         let mut expr = self.unary()?;
 
         while self.current_is_any_of(&[TokenType::Slash, TokenType::Star]) {
@@ -215,7 +215,7 @@ impl<'p> Parser<'p> {
         Ok(expr)
     }
 
-    fn unary(&mut self) -> Result<Expr<'p>, ParserError<'p>> {
+    pub(crate) fn unary(&mut self) -> Result<Expr<'p>, ParserError<'p>> {
         if self.current_is_any_of(&[TokenType::Bang, TokenType::Minus]) {
             let op = self.previous();
             let right = self.unary()?;
@@ -225,7 +225,7 @@ impl<'p> Parser<'p> {
         }
     }
 
-    fn primary(&mut self) -> Result<Expr<'p>, ParserError<'p>> {
+    pub(crate) fn primary(&mut self) -> Result<Expr<'p>, ParserError<'p>> {
         match self.peek().ty {
             TokenType::False => {
                 self.advance();
@@ -264,7 +264,7 @@ impl<'p> Parser<'p> {
         }
     }
 
-    fn consume_until(
+    pub(crate) fn consume_until(
         &mut self,
         ty: TokenType,
         message: &str,
@@ -279,7 +279,7 @@ impl<'p> Parser<'p> {
         }
     }
 
-    fn synchronize(&mut self) {
+    pub(crate) fn synchronize(&mut self) {
         self.advance();
         while !self.is_at_end() {
             if self.previous().ty == TokenType::Semicolon {

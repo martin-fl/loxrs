@@ -2,7 +2,7 @@ use crate::token::Token;
 use std::fmt;
 
 #[derive(Clone, PartialEq, Debug)]
-pub(crate) enum Literal {
+pub enum Literal {
     Number(f64),
     String(String),
     True,
@@ -11,7 +11,7 @@ pub(crate) enum Literal {
 }
 
 #[derive(Debug)]
-pub(crate) enum Expr<'e> {
+pub enum Expr<'e> {
     Assign(Token<'e>, Box<Expr<'e>>),
     Binary(Box<Expr<'e>>, Token<'e>, Box<Expr<'e>>),
     Grouping(Box<Expr<'e>>),
@@ -21,7 +21,7 @@ pub(crate) enum Expr<'e> {
 }
 
 #[derive(Debug)]
-pub(crate) enum Stmt<'s> {
+pub enum Stmt<'s> {
     Block(Vec<Stmt<'s>>),
     Expr(Expr<'s>),
     Print(Expr<'s>),

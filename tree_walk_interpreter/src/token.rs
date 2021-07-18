@@ -1,5 +1,5 @@
 #[derive(Debug, PartialEq, Clone)]
-pub(crate) enum TokenType {
+pub enum TokenType {
     // Length-1 tokens
     LeftParen,
     RightParen,
@@ -50,7 +50,7 @@ pub(crate) enum TokenType {
 }
 
 impl TokenType {
-    pub(crate) fn try_to_keyword(lexeme: &str) -> Option<TokenType> {
+    pub fn try_to_keyword(lexeme: &str) -> Option<TokenType> {
         use TokenType::*;
         match lexeme {
             "and" => Some(And),
@@ -75,10 +75,10 @@ impl TokenType {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct Token<'tok> {
-    pub ty: TokenType,
-    pub lexeme: &'tok str,
-    pub line: usize,
+pub struct Token<'tok> {
+    pub(crate) ty: TokenType,
+    pub(crate) lexeme: &'tok str,
+    pub(crate) line: usize,
 }
 
 impl<'tok> Token<'tok> {

@@ -6,14 +6,14 @@ use crate::parser::Parser;
 use crate::scanner::Scanner;
 use crate::token::{Token, TokenType};
 
-pub(crate) enum LoxError<'e> {
+pub enum LoxError<'e> {
     FromScanner(usize, String),
     FromParser(Vec<(Token<'e>, String)>),
     FromInterpreter(Token<'e>, String),
 }
 
 impl<'a> LoxError<'a> {
-    pub(crate) fn report(&self) {
+    pub fn report(&self) {
         match self {
             LoxError::FromScanner(line, message) => eprintln!("[line {}] Error: {}", line, message),
             LoxError::FromParser(v) => {
@@ -41,7 +41,7 @@ impl<'a> LoxError<'a> {
 }
 
 pub struct Lox {
-    interpreter: Interpreter,
+    pub(crate) interpreter: Interpreter,
 }
 
 impl Lox {
@@ -51,7 +51,7 @@ impl Lox {
         }
     }
 
-    fn run<'a>(&'a mut self, source: &'a str) -> Result<(), LoxError<'a>> {
+    pub fn run<'a>(&'a mut self, source: &'a str) -> Result<(), LoxError<'a>> {
         let scanner = Scanner::new(source);
         let tokens = scanner
             .scan_tokens()

@@ -7,31 +7,31 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 #[derive(Clone)]
-pub(crate) struct Environment {
-    enclosing: Option<Rc<RefCell<Environment>>>,
-    values: HashMap<String, Literal>,
+pub struct Environment {
+    pub(crate) enclosing: Option<Rc<RefCell<Environment>>>,
+    pub(crate) values: HashMap<String, Literal>,
 }
 
 impl Environment {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             enclosing: None,
             values: HashMap::new(),
         }
     }
 
-    pub(crate) fn new_within(enclosing: Rc<RefCell<Environment>>) -> Self {
+    pub fn new_within(enclosing: Rc<RefCell<Environment>>) -> Self {
         Self {
             enclosing: Some(enclosing),
             values: HashMap::new(),
         }
     }
 
-    pub(crate) fn define(&mut self, name: String, value: Literal) {
+    pub fn define(&mut self, name: String, value: Literal) {
         self.values.insert(name, value);
     }
 
-    pub(crate) fn get<'a>(&self, name: Token<'a>) -> Result<Literal, InterpreterError<'a>> {
+    pub fn get<'a>(&self, name: Token<'a>) -> Result<Literal, InterpreterError<'a>> {
         if self.values.contains_key(name.lexeme) {
             self.values
                 .get(name.lexeme)
@@ -52,7 +52,7 @@ impl Environment {
         }
     }
 
-    pub(crate) fn assign<'a>(
+    pub fn assign<'a>(
         &mut self,
         name: Token<'a>,
         value: Literal,
@@ -72,13 +72,13 @@ impl Environment {
 }
 
 #[derive(Clone)]
-pub(crate) struct InterpreterError<'e> {
-    pub token: Token<'e>,
-    pub message: String,
+pub struct InterpreterError<'e> {
+    pub(crate) token: Token<'e>,
+    pub(crate) message: String,
 }
 
 impl<'e> InterpreterError<'e> {
-    pub(crate) fn new(token: Token<'e>, message: &str) -> Self {
+    pub fn new(token: Token<'e>, message: &str) -> Self {
         Self {
             token,
             message: message.to_string(),
@@ -86,8 +86,8 @@ impl<'e> InterpreterError<'e> {
     }
 }
 
-pub(crate) struct Interpreter {
-    env: Rc<RefCell<Environment>>,
+pub struct Interpreter {
+    pub(crate) env: Rc<RefCell<Environment>>,
 }
 
 // TODO: Detail the interpreter errors
@@ -98,7 +98,7 @@ impl Interpreter {
         }
     }
 
-    pub(crate) fn evaluate<'a>(&mut self, expr: Expr<'a>) -> Result<Literal, InterpreterError<'a>> {
+    pub fn evaluate<'a>(&mut self, expr: Expr<'a>) -> Result<Literal, InterpreterError<'a>> {
         use Literal::Number;
         match expr {
             Expr::Literal(lit) => Ok(lit),
@@ -219,7 +219,7 @@ impl Interpreter {
         }
     }
 
-    pub(crate) fn execute<'a>(&mut self, statement: Stmt<'a>) -> Result<(), InterpreterError<'a>> {
+    pub fn execute<'a>(&mut self, statement: Stmt<'a>) -> Result<(), InterpreterError<'a>> {
         match statement {
             Stmt::Block(statements) => {
                 let previous = Rc::clone(&self.env);
