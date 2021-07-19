@@ -1,0 +1,23 @@
+use crate::scanner::{Scanner, Token};
+
+pub struct Compiler;
+
+impl Compiler {
+    pub fn compile(source: &str) {
+        let scanner = Scanner::new(source);
+
+        let mut line = std::usize::MAX;
+        loop {
+            let token = scanner.scan_token();
+            if token.line != line {
+                print!("{:4}", token.line);
+                line = token.line;
+            } else {
+                print!("   | ");
+            }
+            print!("{:2} '{}'", token.ty, source[token.start..(token.start+token.len)]);
+            
+            if token.ty == TokenType::EOF { break }
+        }
+    }
+}

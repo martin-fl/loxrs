@@ -11,3 +11,6 @@ members = ["tree_walk_interpreter", "bytecode_virtual_machine"]
 [dependencies]
 tree_walk_interpreter = {path="tree_walk_interpreter"}
 bytecode_virtual_machine = {path="bytecode_virtual_machine"}
+
+[features]
+treewalk = []

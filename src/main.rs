@@ -1,13 +1,18 @@
 use std::env;
 use std::io;
 
-use tree_walk_interpreter;
-use bytecode_virtual_machine;
+#[cfg(not(feature = "treewalk"))]
+use bytecode_virtual_machine::vm::VM;
+#[cfg(feature = "treewalk")]
+use tree_walk_interpreter::Lox;
 
 fn main() -> io::Result<()> {
-    let mut args = env::args();
+    #[cfg(feature = "treewalk")]
+    let mut lox = Lox::new();
+    #[cfg(not(feature = "treewalk"))]
+    let mut lox = VM::new();
 
-    let mut lox = tree_walk_interpreter::Lox::new();
+    let mut args = env::args();
 
     match args.len() {
         1 => lox.run_prompt()?,
