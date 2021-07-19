@@ -10,22 +10,25 @@ pub enum Literal {
     Nil,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Expr<'e> {
     Assign(Token<'e>, Box<Expr<'e>>),
     Binary(Box<Expr<'e>>, Token<'e>, Box<Expr<'e>>),
     Grouping(Box<Expr<'e>>),
     Literal(Literal),
+    Logical(Box<Expr<'e>>, Token<'e>, Box<Expr<'e>>),
     Unary(Token<'e>, Box<Expr<'e>>),
     Variable(Token<'e>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Stmt<'s> {
     Block(Vec<Stmt<'s>>),
     Expr(Expr<'s>),
+    If(Expr<'s>, Box<Stmt<'s>>, Option<Box<Stmt<'s>>>),
     Print(Expr<'s>),
     Var(Token<'s>, Option<Expr<'s>>),
+    While(Expr<'s>, Box<Stmt<'s>>),
 }
 
 impl fmt::Display for Literal {

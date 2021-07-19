@@ -3,7 +3,7 @@
 version = 3
 
 [[package]]
-name = "crafting_interpreters"
+name = "loxrs"
 version = "0.1.0"
 dependencies = [
  "tree_walk_interpreter",

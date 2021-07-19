@@ -106,8 +106,14 @@ impl<'p> Parser<'p> {
     }
 
     pub(crate) fn statement(&mut self) -> Result<Stmt<'p>, ParserError<'p>> {
-        if self.current_is_any_of(&[TokenType::Print]) {
+        if self.current_is_any_of(&[TokenType::For]) {
+            self.for_statement()
+        } else if self.current_is_any_of(&[TokenType::If]) {
+            self.if_statement()
+        } else if self.current_is_any_of(&[TokenType::Print]) {
             self.print_statement()
+        } else if self.current_is_any_of(&[TokenType::While]) {
+            self.while_statement()
         } else if self.current_is_any_of(&[TokenType::LeftBrace]) {
             self.block()
         } else {
@@ -115,10 +121,73 @@ impl<'p> Parser<'p> {
         }
     }
 
+    pub(crate) fn for_statement(&mut self) -> Result<Stmt<'p>, ParserError<'p>> {
+        self.consume_until(TokenType::LeftParen, "Expected '(' after 'for'.")?;
+        let init = if self.current_is_any_of(&[TokenType::Semicolon]) {
+            None
+        } else if self.current_is_any_of(&[TokenType::Var]) {
+            Some(self.var_declaration()?)
+        } else {
+            Some(self.expression_statement()?)
+        };
+
+        let cond = if !self.current_is(&TokenType::Semicolon) {
+            self.expression()?
+        } else {
+            Expr::Literal(Literal::True)
+        };
+        self.consume_until(TokenType::Semicolon, "Expected ';' after loop condition.")?;
+
+        let incr = if !self.current_is(&TokenType::RightParen) {
+            Some(self.expression()?)
+        } else {
+            None
+        };
+        self.consume_until(TokenType::RightParen, "Expected ')' after 'for' clauses.")?;
+
+        let mut body = self.statement()?;
+
+        if let Some(incr) = incr {
+            body = Stmt::Block(vec![body, Stmt::Expr(incr)]);
+        }
+
+        body = Stmt::While(cond, Box::new(body));
+
+        if let Some(init) = init {
+            body = Stmt::Block(vec![init, body]);
+        }
+
+        Ok(body)
+    }
+
+    pub(crate) fn if_statement(&mut self) -> Result<Stmt<'p>, ParserError<'p>> {
+        self.consume_until(TokenType::LeftParen, "Expected '(' after 'if'")?;
+        let condition = self.expression()?;
+        self.consume_until(TokenType::RightParen, "Expected ')' after if condition")?;
+
+        let then_branch = Box::new(self.statement()?);
+        let else_branch = if self.current_is_any_of(&[TokenType::Else]) {
+            Some(Box::new(self.statement()?))
+        } else {
+            None
+        };
+
+        Ok(Stmt::If(condition, then_branch, else_branch))
+    }
+
     pub(crate) fn print_statement(&mut self) -> Result<Stmt<'p>, ParserError<'p>> {
         let expr = self.expression()?;
         self.consume_until(TokenType::Semicolon, "Expected ';' after value.")?;
         Ok(Stmt::Print(expr))
+    }
+
+    pub(crate) fn while_statement(&mut self) -> Result<Stmt<'p>, ParserError<'p>> {
+        self.consume_until(TokenType::LeftParen, "Expected '(' after 'while'")?;
+        let condition = self.expression()?;
+        self.consume_until(TokenType::RightParen, "Expected ')' after while condition")?;
+        let body = self.statement()?;
+
+        Ok(Stmt::While(condition, Box::new(body)))
     }
 
     pub(crate) fn block(&mut self) -> Result<Stmt<'p>, ParserError<'p>> {
@@ -143,7 +212,7 @@ impl<'p> Parser<'p> {
     }
 
     pub(crate) fn assignment(&mut self) -> Result<Expr<'p>, ParserError<'p>> {
-        let expr = self.equality()?;
+        let expr = self.or()?;
 
         if self.current_is_any_of(&[TokenType::Equal]) {
             let equals = self.previous();
@@ -157,6 +226,30 @@ impl<'p> Parser<'p> {
                     message: "Invalid assignment target.".to_string(),
                 })
             };
+        }
+
+        Ok(expr)
+    }
+
+    pub(crate) fn or(&mut self) -> Result<Expr<'p>, ParserError<'p>> {
+        let mut expr = self.and()?;
+
+        while self.current_is_any_of(&[TokenType::Or]) {
+            let op = self.previous();
+            let right = self.and()?;
+            expr = Expr::Logical(Box::new(expr), op, Box::new(right));
+        }
+
+        Ok(expr)
+    }
+
+    pub(crate) fn and(&mut self) -> Result<Expr<'p>, ParserError<'p>> {
+        let mut expr = self.equality()?;
+
+        while self.current_is_any_of(&[TokenType::And]) {
+            let op = self.previous();
+            let right = self.equality()?;
+            expr = Expr::Logical(Box::new(expr), op, Box::new(right));
         }
 
         Ok(expr)

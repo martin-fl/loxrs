@@ -90,22 +90,19 @@ impl Lox {
     }
 
     pub fn run_prompt(&mut self) -> io::Result<()> {
-        let mut line = String::new();
+        let mut line = String::from("  ");
         let stdin = io::stdin();
         let mut stdout = io::stdout();
 
-        loop {
+        while line.len() > 1 {
+            line.clear();
             print!("lox> ");
             let _ = stdout.flush();
             stdin.read_line(&mut line)?;
-            if line.len() <= 1 {
-                break;
-            }
             match self.run(&line) {
                 Ok(()) => {}
                 Err(e) => e.report(),
             }
-            line.clear();
         }
 
         Ok(())

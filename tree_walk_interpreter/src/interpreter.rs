@@ -210,6 +210,26 @@ impl Interpreter {
                     _ => Err(InterpreterError::new(op, "Unknown operator")),
                 }
             }
+            // This is weird but I am lazy
+            Expr::Logical(box left, op, box right) => {
+                let left = self.evaluate(left)?;
+                match op.ty {
+                    TokenType::Or => match left {
+                        Literal::True => Ok(left),
+                        Literal::False | Literal::Nil => self.evaluate(right),
+                        _ => Err(InterpreterError::new(op, "Expected two booleans.")),
+                    },
+                    TokenType::And => match left {
+                        Literal::True => self.evaluate(right),
+                        Literal::False | Literal::Nil => Ok(left),
+                        _ => Err(InterpreterError::new(op, "Expected two booleans.")),
+                    },
+                    _ => Err(InterpreterError::new(
+                        op,
+                        "Expected logical operator 'and' or 'or'.",
+                    )),
+                }
+            }
             Expr::Variable(name) => (*self.env).borrow().get(name),
             Expr::Assign(name, box value) => {
                 let value = self.evaluate(value)?;
@@ -228,10 +248,24 @@ impl Interpreter {
                 for statement in statements {
                     self.execute(statement)?;
                 }
-                (*self.env).swap(&*previous); 
+                (*self.env).swap(&*previous);
                 Ok(())
             }
             Stmt::Expr(expr) => self.evaluate(expr).map(|_| ()),
+            Stmt::If(cond, box then, maybe_else) => {
+                match self.evaluate(cond)? {
+                    Literal::True => self.execute(then),
+                    Literal::False | Literal::Nil => match maybe_else {
+                        Some(box else_) => self.execute(else_),
+                        None => Ok(()),
+                    },
+                    // Note: How do we throw an error as we don't have a token?
+                    _ => Err(InterpreterError::new(
+                        Token::new(TokenType::If, "if", 0),
+                        "Expected a boolean or nil as condition in if condition.",
+                    )),
+                }
+            }
             Stmt::Print(expr) => self.evaluate(expr).map(|lit| println!("{}", lit)),
             Stmt::Var(name, init) => {
                 let value = match init {
@@ -242,6 +276,13 @@ impl Interpreter {
                 (*self.env)
                     .borrow_mut()
                     .define(name.lexeme.to_string(), value);
+                Ok(())
+            }
+            // I hate that I had to use clone
+            Stmt::While(condition, box body) => {
+                while let Literal::True = self.evaluate(condition.clone())? {
+                    self.execute(body.clone())?
+                }
                 Ok(())
             }
         }
