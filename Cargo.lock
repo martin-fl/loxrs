@@ -3,9 +3,14 @@
 version = 3
 
 [[package]]
+name = "bytecode_virtual_machine"
+version = "0.1.0"
+
+[[package]]
 name = "loxrs"
 version = "0.1.0"
 dependencies = [
+ "bytecode_virtual_machine",
  "tree_walk_interpreter",
 ]
 
