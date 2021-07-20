@@ -6,6 +6,7 @@ pub mod vm;
 
 use scanner::{Token, TokenType};
 
+#[derive(Debug)]
 pub struct LoxError {
     message: &'static str,
     line: usize,
@@ -34,7 +35,7 @@ use std::fmt;
 
 impl fmt::Display for LoxError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "[line {} Error", self.line)?;
+        write!(f, "[line {}] Error", self.line)?;
 
         match self.token {
             Some(tok) => match tok.ty {
@@ -49,3 +50,24 @@ impl fmt::Display for LoxError {
 }
 
 const DEBUG: bool = true;
+
+#[macro_export]
+macro_rules! define_enum {
+    ($name:ident, $($variant:ident = $byte:expr,)*) => {
+        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+        #[repr(u8)]
+        pub enum $name {
+            $($variant = $byte,)*
+        }
+
+        impl From<u8> for $name {
+            fn from(byte: u8) -> Self {
+                use $name::*;
+                match byte {
+                    $($byte => $variant,)*
+                    _ => panic!("Unknown OpCode"),
+                }
+            }
+        }
+    };
+}

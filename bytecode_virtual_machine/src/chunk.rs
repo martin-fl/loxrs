@@ -2,27 +2,10 @@ use std::convert::{From, Into};
 
 use crate::value::Value;
 
-macro_rules! define_op_codes {
-    ($($variant:ident = $byte:expr,)*) => {
-        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-        #[repr(u8)]
-        pub enum OpCode {
-            $($variant = $byte,)*
-        }
+use crate::define_enum;
 
-        impl From<u8> for OpCode {
-            fn from(byte: u8) -> Self {
-                use OpCode::*;
-                match byte {
-                    $($byte => $variant,)*
-                    _ => panic!("Unknown OpCode"),
-                }
-            }
-        }
-    };
-}
-
-define_op_codes! {
+define_enum! {
+    OpCode,
     Return = 0,
     Constant = 1,
     Negate = 2,
@@ -30,6 +13,9 @@ define_op_codes! {
     Substract = 4,
     Multiply = 5,
     Divide = 6,
+    Nil = 7,
+    True = 8,
+    False = 9,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -77,8 +63,12 @@ impl Chunk {
 
         let instruction: OpCode = self.instructions[offset].into();
 
+        #[allow(unreachable_patterns)]
         match instruction {
             OpCode::Return
+            | OpCode::Nil
+            | OpCode::False
+            | OpCode::True
             | OpCode::Add
             | OpCode::Substract
             | OpCode::Multiply

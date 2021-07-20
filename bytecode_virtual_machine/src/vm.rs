@@ -8,6 +8,22 @@ use std::cell::{Cell, RefCell};
 use std::fs::File;
 use std::io::{self, Read, Write};
 
+macro_rules! binary_op {
+    ($self:ident,$op:tt) => {
+        match ($self.peek(0),$self.peek(1)) {
+            (Value::Number(_),Value::Number(_)) => {
+                if let Value::Number(right) = $self.pop() {
+                    if let Value::Number(left) = $self.pop() {
+                        $self.push(Value::Number(left $op right));
+                    }
+                } 
+            },
+            _ => return Err(InterpretError::RuntimeError(LoxError::new("Operands must be two numbers", $self.get_line())))
+        } 
+    };
+}
+
+#[derive(Debug)]
 pub enum InterpretError {
     CompileError(LoxError),
     RuntimeError(LoxError),
@@ -43,7 +59,7 @@ impl VM {
             stdin.read_line(&mut line)?;
             match self.interpret(&line) {
                 Ok(()) => {}
-                Err(_) => {}
+                Err(e) => eprintln!("{:?}", e),
             }
         }
 
@@ -66,7 +82,9 @@ impl VM {
     fn interpret(&mut self, source: &str) -> Result<(), InterpretError> {
         let mut chunk = Chunk::new();
 
-        chunk = Compiler::new(source).compile(chunk).map_err(|e| InterpretError::CompileError(e))?;
+        chunk = Compiler::new(source)
+            .compile(chunk)
+            .map_err(|e| InterpretError::CompileError(e))?;
 
         self.chunk = Some(Box::new(chunk));
         self.ip = 0;
@@ -92,6 +110,7 @@ impl VM {
                     .disassemble_instruction_at(self.ip);
             }
 
+            #[allow(unreachable_patterns)]
             match instructions[self.ip].into() {
                 OpCode::Return => {
                     println!("{}", self.pop());
@@ -99,36 +118,33 @@ impl VM {
                 }
                 OpCode::Constant => {
                     self.ip += 1;
-                    let constant = constants[instructions[self.ip] as usize];
+                    let constant = constants[instructions[self.ip] as usize].clone();
                     self.push(constant);
                 }
+                OpCode::Nil => self.push(Value::Nil),
+                OpCode::True => self.push(Value::Bool(true)),
+                OpCode::False => self.push(Value::Bool(false)),
 
-                OpCode::Add => {
-                    let right = self.pop();
-                    let left = self.pop();
-                    self.push(left + right);
-                }
-                OpCode::Substract => {
-                    let right = self.pop();
-                    let left = self.pop();
-                    self.push(left - right);
-                }
-                OpCode::Multiply => {
-                    let right = self.pop();
-                    let left = self.pop();
-                    self.push(left * right);
-                }
-                OpCode::Divide => {
-                    let right = self.pop();
-                    let left = self.pop();
-                    self.push(left / right);
-                }
+                OpCode::Add => binary_op!(self, +),
+                OpCode::Substract => binary_op!(self, -),
+                OpCode::Multiply => binary_op!(self, *),
+                OpCode::Divide => binary_op!(self, /),
 
-                OpCode::Negate => self.stack.borrow_mut()[self.stack_top.get() - 1] *= -1.0, // self.push(-self.pop()),
+                OpCode::Negate => {
+                    if let Value::Number(x) = self.peek(0) {
+                        self.stack.borrow_mut()[self.stack_top.get() - 1] = Value::Number(-x);
+                    // self.push(-self.pop()),
+                    } else {
+                        return Err(InterpretError::RuntimeError(LoxError::new(
+                            "Operand must be a number",
+                            self.get_line(),
+                        )));
+                    }
+                }
                 _ => {
                     return Err(InterpretError::CompileError(LoxError::new(
                         "Unknown OpCode",
-                        self.chunk.as_ref().unwrap().lines[self.ip],
+                        self.get_line(),
                     )))
                 }
             }
@@ -149,4 +165,16 @@ impl VM {
             .pop()
             .expect("Can't pop an empty stack.")
     }
+
+    fn get_line(&self) -> usize {
+        self.chunk.as_ref().unwrap().lines[self.ip]
+    }
+
+    fn peek(&self, distance: usize) -> Value {
+        self.stack.borrow()[self.stack_top.get() - 1 - distance].clone()
+    }
 }
+
+
+
+

@@ -1,55 +1,58 @@
 use crate::LoxError;
 
-#[derive(Copy, Clone, PartialEq, Eq)]
-#[repr(u8)]
-pub enum TokenType {
-    LeftParen,
-    RightParen,
-    LeftBrace,
-    RightBrace,
-    Comma,
-    Dot,
-    Minus,
-    Plus,
-    Semicolon,
-    Slash,
-    Star,
+use crate::define_enum;
 
-    Bang,
-    BangEqual,
-    Equal,
-    EqualEqual,
-    Greater,
-    GreaterEqual,
-    Less,
-    LessEqual,
+define_enum! {
+    TokenType,
 
-    Identifier,
-    String,
-    Number,
+    LeftParen = 1,
+    RightParen = 2,
+    LeftBrace = 3,
+    RightBrace = 4,
+    Dot = 5,
+    Minus = 6,
+    Plus = 7,
+    Semicolon = 8,
+    Slash = 9,
+    Star = 10,
 
-    And,
-    Class,
-    Else,
-    False,
-    For,
-    Fun,
-    If,
-    Nil,
-    Or,
-    Print,
-    Return,
-    Super,
-    This,
-    True,
-    Var,
-    While,
+    Bang = 11,
+    BangEqual = 12,
+    Equal = 13,
+    EqualEqual = 14,
+    Greater = 15,
+    GreaterEqual = 16,
+    Less = 17,
+    LessEqual = 18,
 
-    Error,
-    EOF,
+    Identifier = 19,
+    String = 20,
+    Number = 21,
+
+    And = 22,
+    Class = 23,
+    Else = 24,
+    False = 25,
+    For = 26,
+    Fun = 27,
+    If = 28,
+    Nil = 29,
+    Or = 30,
+    Print = 31,
+    Return = 32,
+    Super = 33,
+    This = 34,
+    True = 35,
+    Var = 36,
+    While = 37,
+
+    Error = 38,
+    EOF = 39,
+
+    Comma = 40,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Token {
     pub(crate) ty: TokenType,
     pub(crate) start: usize,
@@ -183,13 +186,17 @@ impl<'sca> Scanner<'sca> {
                         self.advance();
                     }
                 }
-                _ => {}
+                _ => break,
             };
         }
     }
 
     fn peek(&self) -> char {
-        self.source_chars[self.current]
+        if self.is_at_end() {
+            '\0'
+        } else {
+            self.source_chars[self.current]
+        }
     }
 
     fn peek_next(&self) -> char {
@@ -263,7 +270,7 @@ impl<'sca> Scanner<'sca> {
             's' => self.check_keyword(1, 4, "uper", TokenType::Super),
             't' if self.current - self.start > 1 => match self.source_chars[self.start + 1] {
                 'h' => self.check_keyword(2, 2, "is", TokenType::This),
-                'r' => self.check_keyword(2, 2, "u", TokenType::True),
+                'r' => self.check_keyword(2, 2, "ue", TokenType::True),
                 _ => TokenType::Identifier,
             },
             'v' => self.check_keyword(1, 2, "ar", TokenType::Var),
@@ -280,7 +287,7 @@ impl<'sca> Scanner<'sca> {
         ty: TokenType,
     ) -> TokenType {
         if self.current - self.start == start + len
-            && &self.source[self.start..(self.start + start)] == rest
+            && &self.source[(self.start + start)..(self.start + start + len)] == rest
         {
             ty
         } else {
