@@ -32,7 +32,7 @@ define_op_codes! {
     Divide = 6,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Default)]
 pub struct Chunk {
     pub(crate) lines: Vec<usize>,
     pub(crate) instructions: Vec<u8>,
@@ -46,11 +46,6 @@ impl Chunk {
             instructions: Vec::new(),
             constants: Vec::new(),
         }
-    }
-
-    pub fn push_op(&mut self, op: OpCode, line: usize) {
-        self.lines.push(line);
-        self.instructions.push(op as u8);
     }
 
     pub fn push_byte(&mut self, byte: u8, line: usize) {

@@ -22,8 +22,6 @@ pub struct VM {
 }
 
 impl VM {
-    const STACK_MAX: usize = 256;
-
     pub fn new() -> Self {
         Self {
             chunk: None,
@@ -68,7 +66,7 @@ impl VM {
     fn interpret(&mut self, source: &str) -> Result<(), InterpretError> {
         let mut chunk = Chunk::new();
 
-        Compiler::compile(source, &mut chunk).map_err(|e| InterpretError::CompileError(e))?;
+        chunk = Compiler::new(source).compile(chunk).map_err(|e| InterpretError::CompileError(e))?;
 
         self.chunk = Some(Box::new(chunk));
         self.ip = 0;
