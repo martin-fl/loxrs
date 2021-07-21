@@ -1,8 +1,8 @@
-use std::convert::{From, Into};
-
 use crate::value::Value;
-
 use crate::define_enum;
+
+use std::convert::{From, Into};
+use std::fmt;
 
 define_enum! {
     OpCode,
@@ -16,6 +16,46 @@ define_enum! {
     Nil = 7,
     True = 8,
     False = 9,
+    Not = 10,
+    Equal = 11,
+    Greater = 12,
+    Less = 13,
+    Print = 14,
+    Pop = 15,
+    DefineGlobal = 16,
+    GetGlobal = 17,
+    SetGlobal = 18,
+    GetLocal = 19,
+    SetLocal = 20,
+}
+
+impl fmt::Display for OpCode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use OpCode::*;
+        write!(f, "{}", match self {
+            Return => "RET",
+            Constant => "CONSTANT",
+            Negate => "NEG",
+            Add => "ADD",
+            Substract => "SUB",
+            Multiply => "MUL",
+            Divide => "DIV",
+            Nil => "NIL",
+            True => "TRUE",
+            False => "FALSE",
+            Not => "NOT",
+            Equal => "EQ",
+            Greater => "GT",
+            Less => "LT",
+            Print => "PRINT",
+            Pop => "POP",
+            DefineGlobal => "DEFGV",
+            GetGlobal => "GETGV",
+            SetGlobal => "SETGV",
+            GetLocal => "GETLV",
+            SetLocal => "SETLV",
+        })
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -66,6 +106,8 @@ impl Chunk {
         #[allow(unreachable_patterns)]
         match instruction {
             OpCode::Return
+            | OpCode::Pop
+            | OpCode::Print
             | OpCode::Nil
             | OpCode::False
             | OpCode::True
@@ -73,16 +115,29 @@ impl Chunk {
             | OpCode::Substract
             | OpCode::Multiply
             | OpCode::Divide
+            | OpCode::Equal
+            | OpCode::Greater
+            | OpCode::Less
+            | OpCode::Not
             | OpCode::Negate => {
-                println!("{:?}", instruction);
+                println!("{}", instruction);
                 offset += 1;
             }
-            OpCode::Constant => {
+            OpCode::Constant 
+            | OpCode::DefineGlobal
+            | OpCode::GetGlobal 
+            | OpCode::SetGlobal => {
                 let constant = self.instructions[offset + 1];
-                print!("{:->16?} {:4} '", instruction, constant);
+                print!("{:8} {:4} '", instruction.to_string(), constant);
                 //TODO: replace when Value type evolve:
                 print!("{}", self.constants[constant as usize]);
                 println!("'");
+                offset += 2;
+            }
+            OpCode::GetLocal
+            | OpCode::SetLocal => {
+                let slot = self.instructions[offset+1];
+                println!("{:8} {:4}", instruction.to_string(), slot);
                 offset += 2;
             }
             _ => {

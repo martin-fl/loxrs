@@ -1,11 +1,9 @@
 - VM
 	- the stack is behind a RefCell and the stack top is behind Cell
 	  design issue much?
-- Chunk
-	- meh
+	- leaks memory when using objects
 
 - Compiler
 	- Error reporting wtf?
-	- Parser needs access to Compiler::emit_\* functions, but is itself 
-	  a member of the compiler
+	- parser and generator are now the same thing
 	

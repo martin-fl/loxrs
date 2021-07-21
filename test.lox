@@ -1,3 +1,4 @@
-1 + 2
-
-3 + 3
+var x = 3;
+var y = 3;
+x = 2 * y;
+print x + y;

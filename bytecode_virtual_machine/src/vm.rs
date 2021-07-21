@@ -1,14 +1,16 @@
 use crate::chunk::{Chunk, OpCode};
 use crate::compiler::Compiler;
-use crate::value::Value;
+use crate::value::{Object, Value};
 use crate::LoxError;
 use crate::DEBUG;
 
 use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{self, Read, Write};
+use std::fmt;
 
-macro_rules! binary_op {
+macro_rules! binary_op_number {
     ($self:ident,$op:tt) => {
         match ($self.peek(0),$self.peek(1)) {
             (Value::Number(_),Value::Number(_)) => {
@@ -16,10 +18,10 @@ macro_rules! binary_op {
                     if let Value::Number(left) = $self.pop() {
                         $self.push(Value::Number(left $op right));
                     }
-                } 
+                }
             },
             _ => return Err(InterpretError::RuntimeError(LoxError::new("Operands must be two numbers", $self.get_line())))
-        } 
+        }
     };
 }
 
@@ -29,12 +31,23 @@ pub enum InterpretError {
     RuntimeError(LoxError),
 }
 
+impl fmt::Display for InterpretError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            InterpretError::CompileError(e) => write!(f, "{}", e),
+            InterpretError::RuntimeError(e) => write!(f, "{}", e),
+        }
+    }
+}
+
+// Note: the VM leaks memory when handling objects
 pub struct VM {
     chunk: Option<Box<Chunk>>,
     ip: usize,
     //stack: RefCell<[Value; VM::STACK_MAX]>,
     stack: RefCell<Vec<Value>>,
     stack_top: Cell<usize>,
+    globals: HashMap<String, Value>,
 }
 
 impl VM {
@@ -44,6 +57,7 @@ impl VM {
             ip: 0,
             stack: RefCell::new(Vec::new()),
             stack_top: Cell::new(0),
+            globals: HashMap::new(),
         }
     }
 
@@ -59,7 +73,7 @@ impl VM {
             stdin.read_line(&mut line)?;
             match self.interpret(&line) {
                 Ok(()) => {}
-                Err(e) => eprintln!("{:?}", e),
+                Err(e) => eprint!("{}", e),
             }
         }
 
@@ -96,6 +110,9 @@ impl VM {
     fn run(&mut self) -> Result<(), InterpretError> {
         let instructions = &self.chunk.as_ref().unwrap().instructions;
         let constants = &self.chunk.as_ref().unwrap().constants;
+        if DEBUG {
+            print!("\n== VM BACKTRACE ==")
+        }
         while self.ip < instructions.len() {
             if DEBUG {
                 print!("          ");
@@ -113,8 +130,58 @@ impl VM {
             #[allow(unreachable_patterns)]
             match instructions[self.ip].into() {
                 OpCode::Return => {
-                    println!("{}", self.pop());
                     return Ok(());
+                }
+                OpCode::Pop => {
+                    self.pop();
+                }
+                OpCode::Print => println!("{}", self.pop()),
+                OpCode::DefineGlobal => {
+                    self.ip += 1;
+                    let name = constants[instructions[self.ip] as usize].clone();
+                    if let Value::Obj(box Object::String(name)) = name {
+                        self.globals.insert(name, self.peek(0));
+                        self.pop();
+                    }
+                }
+                OpCode::GetGlobal => {
+                    self.ip += 1;
+                    let name = constants[instructions[self.ip] as usize].clone();
+                    if let Value::Obj(box Object::String(name)) = name {
+                        if let Some(value) = self.globals.get(&name) {
+                            self.push(value.clone());
+                        } else {
+                            return Err(InterpretError::RuntimeError(LoxError::new(
+                                "Undefined variable.",
+                                self.get_line(),
+                            )));
+                        }
+                    }
+                }
+                OpCode::SetGlobal => {
+                    self.ip += 1;
+                    let name = constants[instructions[self.ip] as usize].clone();
+                    if let Value::Obj(box Object::String(name)) = name {
+                        if self.globals.contains_key(&name) { 
+                            self.globals.insert(name, self.peek(0));
+                        } else {
+                            return Err(InterpretError::RuntimeError(LoxError::new(
+                                "Undefined variable.",
+                                self.get_line(),
+                            )));
+                        }
+                    }
+                }
+                OpCode::GetLocal => {
+                    self.ip +=1;
+                    let slot = instructions[self.ip];
+                    let local = self.stack.borrow()[slot as usize].clone();
+                    self.push(local);
+                }
+                OpCode::SetLocal => {
+                    self.ip +=1;
+                    let slot = instructions[self.ip];
+                    self.stack.borrow_mut()[slot as usize] = self.peek(0).clone();
                 }
                 OpCode::Constant => {
                     self.ip += 1;
@@ -125,10 +192,71 @@ impl VM {
                 OpCode::True => self.push(Value::Bool(true)),
                 OpCode::False => self.push(Value::Bool(false)),
 
-                OpCode::Add => binary_op!(self, +),
-                OpCode::Substract => binary_op!(self, -),
-                OpCode::Multiply => binary_op!(self, *),
-                OpCode::Divide => binary_op!(self, /),
+                OpCode::Equal => {
+                    let right = self.pop();
+                    let left = self.pop();
+                    self.push(Value::Bool(left == right));
+                }
+                OpCode::Greater => match (self.peek(0), self.peek(1)) {
+                    (Value::Number(_), Value::Number(_)) => {
+                        if let Value::Number(right) = self.pop() {
+                            if let Value::Number(left) = self.pop() {
+                                self.push(Value::Bool(left > right));
+                            }
+                        }
+                    }
+                    _ => {
+                        return Err(InterpretError::RuntimeError(LoxError::new(
+                            "Operands must be two numbers",
+                            self.get_line(),
+                        )))
+                    }
+                },
+                OpCode::Less => match (self.peek(0), self.peek(1)) {
+                    (Value::Number(_), Value::Number(_)) => {
+                        if let Value::Number(right) = self.pop() {
+                            if let Value::Number(left) = self.pop() {
+                                self.push(Value::Bool(left < right));
+                            }
+                        }
+                    }
+                    _ => {
+                        return Err(InterpretError::RuntimeError(LoxError::new(
+                            "Operands must be two numbers",
+                            self.get_line(),
+                        )))
+                    }
+                },
+
+                OpCode::Add => {
+                    if self.peek(0).is_string() && self.peek(1).is_string() {
+                        match (self.pop(), self.pop()) {
+                            (
+                                Value::Obj(box Object::String(right)),
+                                Value::Obj(box Object::String(left)),
+                            ) => self.push(Value::Obj(Box::new(Object::String(format!(
+                                "{}{}",
+                                left, right
+                            ))))),
+                            _ => unreachable!(),
+                        }
+                    } else if self.peek(0).is_number() && self.peek(1).is_number() {
+                        match (self.pop(), self.pop()) {
+                            (Value::Number(right), Value::Number(left)) => {
+                                self.push(Value::Number(left + right))
+                            }
+                            _ => unreachable!(),
+                        }
+                    } else {
+                        return Err(InterpretError::RuntimeError(LoxError::new(
+                            "Operands must be two numbers",
+                            self.get_line(),
+                        )));
+                    }
+                }
+                OpCode::Substract => binary_op_number!(self, -),
+                OpCode::Multiply => binary_op_number!(self, *),
+                OpCode::Divide => binary_op_number!(self, /),
 
                 OpCode::Negate => {
                     if let Value::Number(x) = self.peek(0) {
@@ -141,6 +269,7 @@ impl VM {
                         )));
                     }
                 }
+                OpCode::Not => self.push(Value::Bool(self.pop().is_falsey())),
                 _ => {
                     return Err(InterpretError::CompileError(LoxError::new(
                         "Unknown OpCode",
@@ -174,7 +303,3 @@ impl VM {
         self.stack.borrow()[self.stack_top.get() - 1 - distance].clone()
     }
 }
-
-
-
-

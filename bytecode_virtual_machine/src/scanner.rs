@@ -71,6 +71,7 @@ impl Token {
     }
 }
 
+#[derive(Debug)]
 pub struct Scanner<'sca> {
     pub(crate) source: &'sca str,
     pub(crate) source_chars: Vec<char>,
@@ -265,7 +266,7 @@ impl<'sca> Scanner<'sca> {
             'i' => self.check_keyword(1, 1, "f", TokenType::If),
             'n' => self.check_keyword(1, 2, "il", TokenType::Nil),
             'o' => self.check_keyword(1, 1, "r", TokenType::Or),
-            'p' => self.check_keyword(1, 4, "print", TokenType::Print),
+            'p' => self.check_keyword(1, 4, "rint", TokenType::Print),
             'r' => self.check_keyword(1, 5, "eturn", TokenType::Return),
             's' => self.check_keyword(1, 4, "uper", TokenType::Super),
             't' if self.current - self.start > 1 => match self.source_chars[self.start + 1] {
