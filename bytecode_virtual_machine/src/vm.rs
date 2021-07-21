@@ -6,9 +6,9 @@ use crate::DEBUG;
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
+use std::fmt;
 use std::fs::File;
 use std::io::{self, Read, Write};
-use std::fmt;
 
 macro_rules! binary_op_number {
     ($self:ident,$op:tt) => {
@@ -135,6 +135,23 @@ impl VM {
                 OpCode::Pop => {
                     self.pop();
                 }
+                OpCode::Jump => {
+                    self.ip += 2;
+                    let offset : u16 = ((instructions[self.ip - 1] as u16) << 8) | instructions[self.ip - 0] as u16;
+                    self.ip += offset as usize;
+                }
+                OpCode::JumpIfFalse => {
+                    self.ip += 2;
+                    let offset : u16 = ((instructions[self.ip - 1] as u16) << 8) | instructions[self.ip - 0] as u16;
+                    if self.peek(0).is_falsey() {
+                        self.ip += offset as usize;
+                    }
+                }
+                OpCode::Loop => {
+                    self.ip += 2;
+                    let offset : u16 = ((instructions[self.ip - 1] as u16) << 8) | instructions[self.ip - 0] as u16;
+                    self.ip -= offset as usize; 
+                }
                 OpCode::Print => println!("{}", self.pop()),
                 OpCode::DefineGlobal => {
                     self.ip += 1;
@@ -162,7 +179,7 @@ impl VM {
                     self.ip += 1;
                     let name = constants[instructions[self.ip] as usize].clone();
                     if let Value::Obj(box Object::String(name)) = name {
-                        if self.globals.contains_key(&name) { 
+                        if self.globals.contains_key(&name) {
                             self.globals.insert(name, self.peek(0));
                         } else {
                             return Err(InterpretError::RuntimeError(LoxError::new(
@@ -173,13 +190,13 @@ impl VM {
                     }
                 }
                 OpCode::GetLocal => {
-                    self.ip +=1;
+                    self.ip += 1;
                     let slot = instructions[self.ip];
                     let local = self.stack.borrow()[slot as usize].clone();
                     self.push(local);
                 }
                 OpCode::SetLocal => {
-                    self.ip +=1;
+                    self.ip += 1;
                     let slot = instructions[self.ip];
                     self.stack.borrow_mut()[slot as usize] = self.peek(0).clone();
                 }

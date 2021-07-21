@@ -1,4 +1,5 @@
-var x = 3;
-var y = 3;
-x = 2 * y;
-print x + y;
+var s = "string";
+
+for (var i = 0; i < 5; i = i + 1) {
+	print s = s + s;
+}

@@ -1,4 +1,6 @@
 use std::fmt;
+use std::rc::Rc;
+use std::cell::RefCell;
 
 #[derive(Debug, Clone, PartialOrd, PartialEq)]
 pub enum Value {
@@ -63,9 +65,29 @@ impl fmt::Display for Value {
     }
 }
 
-#[derive(Debug, Clone, PartialOrd, PartialEq)]
+// This ended up being a poor choice, but any other way would have
+// been a pain to implement and use
+#[derive(Debug, Clone, PartialEq)]
 pub enum Object {
     String(String),
+    Function(FunctionObject),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct FunctionObject {
+    arity: usize,
+    chunk: Rc<RefCell<Chunk>>,
+    name: Object,
+}
+
+impl FunctionObject {
+    pub fn new() -> Self {
+        Self {
+            arity: 0,
+            chunk: Rc::new(RefCell::new(Chunk::new())),
+            name: Object::String(String::new()),
+        }
+    }
 }
 
 impl fmt::Display for Object {
@@ -73,7 +95,18 @@ impl fmt::Display for Object {
         #[allow(unreachable_patterns)]
         match self {
             Object::String(s) => write!(f, "\"{}\"", s),
+            Object::Function(f) => write!(f, "{}", f),
             _ => unreachable!(),
+        }
+    }
+}
+
+impl fmt::Display for FunctionObject {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Object::String(s) = self.name { 
+            write!(f, "<function {}>", s)
+        } else {
+            write!(f, "<function <corrupted>>")
         }
     }
 }

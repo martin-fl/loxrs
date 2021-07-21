@@ -35,11 +35,16 @@ struct ParseRule<'r> {
 pub struct Local {
     name: Token,
     depth: usize,
+    is_initialized: bool,
 }
 
 impl Default for Local {
     fn default() -> Local {
-        Local { name: Token::new(TokenType::EOF, 0, 0, 0), depth: 0 }
+        Local {
+            name: Token::new(TokenType::EOF, 0, 0, 0),
+            depth: 0,
+            is_initialized: false,
+        }
     }
 }
 
@@ -93,7 +98,7 @@ impl<'c> Compiler<'c> {
                 self.current,
             ));
         }
-        
+
         self.emit_return();
         if DEBUG && !self.had_error {
             self.current_chunk().deref().borrow().disassemble("CODE");
@@ -142,6 +147,35 @@ impl<'c> Compiler<'c> {
     fn emit_return(&mut self) {
         self.emit_byte(OpCode::Return as u8)
     }
+
+    fn emit_jump(&mut self, instruction: OpCode) -> usize {
+        self.emit_byte(instruction as u8);
+        self.emit_byte(0xFF);
+        self.emit_byte(0xFF);
+        (*self.current_chunk()).borrow().instructions.len() - 2
+    }
+
+    fn patch_jump(&mut self, offset: usize) {
+        let current_chunk = self.current_chunk();
+        let jump = (*current_chunk).borrow().instructions.len() - offset - 2;
+
+        if jump > u16::MAX as usize {
+            self.report_error(LoxError::from_token("Too much code to jump over.", self.current));
+        }
+
+        (*current_chunk).borrow_mut().instructions[offset] = ((jump >> 8) & 0xFF) as u8;
+        (*current_chunk).borrow_mut().instructions[offset + 1] = (jump & 0xFF) as u8;
+    }
+
+    fn emit_loop(&mut self, loop_start: usize) {
+        self.emit_byte(OpCode::Loop as u8);
+        let offset = (*self.current_chunk()).borrow().instructions.len() - loop_start + 2;
+        if offset > u16::MAX as usize { 
+            self.report_error(LoxError::from_token("Loop body too large", self.current));
+        }
+        self.emit_byte(((offset>>8) & 0xFF) as u8);
+        self.emit_byte((offset & 0xFF) as u8);
+    }
 }
 
 // Parsing impls
@@ -162,7 +196,7 @@ impl<'c> Compiler<'c> {
 
     fn grouping(&mut self, _: bool) {
         self.expression();
-        self.consume_until(TokenType::RightParen, "Expected ')' after expression.");
+        self.consume_if_current_is(TokenType::RightParen, "Expected ')' after expression.");
     }
 
     fn number(&mut self, _: bool) {
@@ -225,15 +259,33 @@ impl<'c> Compiler<'c> {
         self.named_variable(self.previous, can_assign);
     }
 
+    fn and(&mut self, _: bool) {
+        let end_jump = self.emit_jump(OpCode::JumpIfFalse);
+        self.emit_byte(OpCode::Pop as u8);
+        self.parse_precedence(Precedence::And);
+        self.patch_jump(end_jump);
+    }
+
+    fn or(&mut self, _: bool) {
+        let else_jump = self.emit_jump(OpCode::JumpIfFalse);
+        let end_jump = self.emit_jump(OpCode::Jump);
+
+        self.patch_jump(else_jump);
+        self.emit_byte(OpCode::Pop as u8);
+        
+        self.parse_precedence(Precedence::Or);
+        self.patch_jump(end_jump);
+    }
+
     fn named_variable(&mut self, name: Token, can_assign: bool) {
         let mut arg = self.resolve_local(name);
         let (set_op, get_op) = if arg.is_some() {
-            (OpCode::SetLocal, OpCode::GetLocal) 
+            (OpCode::SetLocal, OpCode::GetLocal)
         } else {
             arg = Some(self.make_identifier_constant(name));
-            (OpCode::SetGlobal, OpCode::GetLocal)
+            (OpCode::SetGlobal, OpCode::GetGlobal)
         };
-        
+
         if can_assign && self.advance_if_current_is(TokenType::Equal) {
             self.expression();
             self.emit_bytes(set_op as u8, arg.unwrap());
@@ -243,13 +295,22 @@ impl<'c> Compiler<'c> {
     }
 
     fn identifiers_are_equal(&self, a: &Token, b: &Token) -> bool {
-        ( a.len == b.len ) 
-        && (&self.scanner.source[a.start..(a.start+a.len)] == &self.scanner.source[b.start..(b.start+b.len)])
+        (a.len == b.len)
+            && (&self.scanner.source[a.start..(a.start + a.len)]
+                == &self.scanner.source[b.start..(b.start + b.len)])
     }
 
-    fn resolve_local(&self, name: Token) -> Option<u8> {
+    fn resolve_local(&mut self, name: Token) -> Option<u8> {
         for i in (0..self.local_count).rev() {
-            if self.identifiers_are_equal(&self.locals[i].name, &name) { return Some(i as u8); }
+            if self.identifiers_are_equal(&self.locals[i].name, &name) {
+                if !self.locals[i].is_initialized {
+                    self.report_error(LoxError::from_token(
+                        "Can't read local variable in its own initializer",
+                        name,
+                    ));
+                }
+                return Some(i as u8);
+            }
         }
 
         None
@@ -268,7 +329,10 @@ impl<'c> Compiler<'c> {
                     (infix_rule.unwrap())(self, can_assign);
 
                     if can_assign && self.advance_if_current_is(TokenType::Equal) {
-                        self.report_error(LoxError::from_token("Invalid assignment target.", self.current))
+                        self.report_error(LoxError::from_token(
+                            "Invalid assignment target.",
+                            self.current,
+                        ))
                     }
                 }
             }
@@ -310,7 +374,7 @@ impl<'c> Compiler<'c> {
             self.emit_byte(OpCode::Nil as u8);
         }
 
-        self.consume_until(
+        self.consume_if_current_is(
             TokenType::Semicolon,
             "Expected ';' after variable declaration.",
         );
@@ -319,30 +383,45 @@ impl<'c> Compiler<'c> {
     }
 
     fn parse_variable(&mut self, error_message: &'static str) -> u8 {
-        self.consume_until(TokenType::Identifier, error_message);
+        self.consume_if_current_is(TokenType::Identifier, error_message);
         self.declare_variable();
-        if self.scope_depth > 0 { return 0 }
+        if self.scope_depth > 0 {
+            return 0;
+        }
         return self.make_identifier_constant(self.previous);
     }
 
+    fn mark_initialized(&mut self) {
+        self.locals[self.local_count - 1].depth = self.scope_depth;
+        self.locals[self.local_count - 1].is_initialized = true;
+    }
+
     fn define_variable(&mut self, global: u8) {
-        if self.scope_depth > 0 { return }
+        if self.scope_depth > 0 {
+            self.mark_initialized();
+            return;
+        }
         self.emit_bytes(OpCode::DefineGlobal as u8, global);
     }
 
     fn declare_variable(&mut self) {
-        if self.scope_depth == 0 { return }
+        if self.scope_depth == 0 {
+            return;
+        }
 
         let name = self.previous;
-        
+
         for i in (0..self.local_count).rev() {
             let local = &self.locals[i];
             if local.depth != usize::MAX && local.depth < self.scope_depth {
-                break
+                break;
             }
 
             if self.identifiers_are_equal(&local.name, &name) {
-                self.report_error(LoxError::from_token("Already a variable with this name in this scope.", name));
+                self.report_error(LoxError::from_token(
+                    "Already a variable with this name in this scope.",
+                    name,
+                ));
             }
         }
 
@@ -351,7 +430,10 @@ impl<'c> Compiler<'c> {
 
     fn add_local(&mut self, name: Token) {
         if self.local_count == u8::MAX as usize + 1 {
-            self.report_error(LoxError::from_token("Too many local variables in function.", name));
+            self.report_error(LoxError::from_token(
+                "Too many local variables in function.",
+                name,
+            ));
             return;
         }
 
@@ -364,6 +446,12 @@ impl<'c> Compiler<'c> {
     fn statement(&mut self) {
         if self.advance_if_current_is(TokenType::Print) {
             self.print_statement();
+        } else if self.advance_if_current_is(TokenType::For) {
+            self.for_statement();
+        } else if self.advance_if_current_is(TokenType::If) {
+            self.if_statement();
+        } else if self.advance_if_current_is(TokenType::While) { 
+            self.while_statement();
         } else if self.advance_if_current_is(TokenType::LeftBrace) {
             self.begin_scope();
             self.block();
@@ -377,7 +465,7 @@ impl<'c> Compiler<'c> {
         while !self.current_is(TokenType::RightBrace) && !self.current_is(TokenType::EOF) {
             self.declaration();
         }
-        self.consume_until(TokenType::RightBrace, "Expect '}' after block.");
+        self.consume_if_current_is(TokenType::RightBrace, "Expect '}' after block.");
     }
 
     fn begin_scope(&mut self) {
@@ -395,14 +483,99 @@ impl<'c> Compiler<'c> {
 
     fn expression_statement(&mut self) {
         self.expression();
-        self.consume_until(TokenType::Semicolon, "Expected ';' after expression.");
+        self.consume_if_current_is(TokenType::Semicolon, "Expected ';' after expression.");
         self.emit_byte(OpCode::Pop as u8);
+    }
+
+    fn for_statement(&mut self) {
+        self.begin_scope();
+
+        self.consume_if_current_is(TokenType::LeftParen,"Expected '(' after 'for'.");
+
+        if self.advance_if_current_is(TokenType::Semicolon) {
+    
+        } else if self.advance_if_current_is(TokenType::Var) {
+            self.var_declaration();
+        } else {
+            self.expression_statement();
+        }
+
+
+
+        let mut loop_start = (*self.current_chunk()).borrow().instructions.len();
+
+        let exit_jump = if !self.advance_if_current_is(TokenType::Semicolon) {
+            self.expression();
+            self.consume_if_current_is(TokenType::Semicolon, "Expect ';' after loop condition");
+
+            let exit_jump = self.emit_jump(OpCode::JumpIfFalse);
+            self.emit_byte(OpCode::Pop as u8);
+
+            Some(exit_jump)
+        } else {
+            None
+        };
+
+        if !self.advance_if_current_is(TokenType::RightParen) {
+            let body_jump = self.emit_jump(OpCode::Jump);
+            let increment_start = (*self.current_chunk()).borrow().instructions.len();
+            self.expression();
+            self.emit_byte(OpCode::Pop as u8);
+            self.consume_if_current_is(TokenType::RightParen, "Expect ')' after for clauses.");
+            
+            self.emit_loop(loop_start);
+            loop_start = increment_start;
+            self.patch_jump(body_jump);
+        }
+
+        self.statement();
+        self.emit_loop(loop_start);
+
+        if let Some(exit_jump) = exit_jump {
+            self.patch_jump(exit_jump);
+            self.emit_byte(OpCode::Pop as u8);
+        } 
+
+        self.end_scope();
+    }
+
+    fn if_statement(&mut self) {
+        self.consume_if_current_is(TokenType::LeftParen, "Expected '(' after 'if'.");
+        self.expression();
+        self.consume_if_current_is(TokenType::RightParen, "Expected ')' after condition.");
+
+        let then_jump = self.emit_jump(OpCode::JumpIfFalse);
+        self.emit_byte(OpCode::Pop as u8);
+        self.statement();
+        let else_jump = self.emit_jump(OpCode::Jump);
+        self.patch_jump(then_jump);
+        self.emit_byte(OpCode::Pop as u8);
+
+        if self.advance_if_current_is(TokenType::Else) {
+            self.statement();
+        }
+        self.patch_jump(else_jump);
     }
 
     fn print_statement(&mut self) {
         self.expression();
-        self.consume_until(TokenType::Semicolon, "Expected ';' after expression.");
+        self.consume_if_current_is(TokenType::Semicolon, "Expected ';' after expression.");
         self.emit_byte(OpCode::Print as u8);
+    }
+
+    fn while_statement(&mut self) {
+        let loop_start = (*self.current_chunk()).borrow().instructions.len();
+        self.consume_if_current_is(TokenType::LeftParen, "Expected '(' after 'while'.");
+        self.expression();
+        self.consume_if_current_is(TokenType::RightParen, "Expected ')' after condition.");
+
+        let exit_jump = self.emit_jump(OpCode::JumpIfFalse);
+        self.emit_byte(OpCode::Pop as u8);
+        self.statement();
+        self.emit_loop(loop_start);
+
+        self.patch_jump(exit_jump);
+        self.emit_byte(OpCode::Pop as u8);
     }
 
     fn synchronize(&mut self) {
@@ -428,7 +601,7 @@ impl<'c> Compiler<'c> {
         }
     }
 
-    fn consume_until(&mut self, ty: TokenType, message: &'static str) {
+    fn consume_if_current_is(&mut self, ty: TokenType, message: &'static str) {
         if self.current.ty == ty {
             self.advance();
         } else {
@@ -454,7 +627,7 @@ impl<'c> Compiler<'c> {
             return;
         }
         self.panic_mode = true;
-        eprintln!("{}", e);
+        eprint!("{}", e);
         self.had_error = true;
     }
 
@@ -516,6 +689,16 @@ impl<'c> Compiler<'c> {
                 infix: None,
                 prec: Precedence::None,
             },
+            And => ParseRule {
+                prefix: None,
+                infix: Some(Self::and),
+                prec: Precedence::And,
+            },
+            Or => ParseRule {
+                prefix: None,
+                infix: Some(Self::or),
+                prec: Precedence::Or,
+            },
             _ => ParseRule {
                 prefix: None,
                 infix: None,
@@ -524,5 +707,3 @@ impl<'c> Compiler<'c> {
         }
     }
 }
-
-

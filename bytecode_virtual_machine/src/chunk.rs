@@ -1,5 +1,5 @@
-use crate::value::Value;
 use crate::define_enum;
+use crate::value::Value;
 
 use std::convert::{From, Into};
 use std::fmt;
@@ -27,34 +27,44 @@ define_enum! {
     SetGlobal = 18,
     GetLocal = 19,
     SetLocal = 20,
+    JumpIfFalse = 21,
+    Jump = 22,
+    Loop = 23,
 }
 
 impl fmt::Display for OpCode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use OpCode::*;
-        write!(f, "{}", match self {
-            Return => "RET",
-            Constant => "CONSTANT",
-            Negate => "NEG",
-            Add => "ADD",
-            Substract => "SUB",
-            Multiply => "MUL",
-            Divide => "DIV",
-            Nil => "NIL",
-            True => "TRUE",
-            False => "FALSE",
-            Not => "NOT",
-            Equal => "EQ",
-            Greater => "GT",
-            Less => "LT",
-            Print => "PRINT",
-            Pop => "POP",
-            DefineGlobal => "DEFGV",
-            GetGlobal => "GETGV",
-            SetGlobal => "SETGV",
-            GetLocal => "GETLV",
-            SetLocal => "SETLV",
-        })
+        write!(
+            f,
+            "{}",
+            match self {
+                Return => "RET",
+                Constant => "CONSTANT",
+                Negate => "NEG",
+                Add => "ADD",
+                Substract => "SUB",
+                Multiply => "MUL",
+                Divide => "DIV",
+                Nil => "NIL",
+                True => "TRUE",
+                False => "FALSE",
+                Not => "NOT",
+                Equal => "EQ",
+                Greater => "GT",
+                Less => "LT",
+                Print => "PRINT",
+                Pop => "POP",
+                DefineGlobal => "DEFGV",
+                GetGlobal => "GETGV",
+                SetGlobal => "SETGV",
+                GetLocal => "GETLV",
+                SetLocal => "SETLV",
+                JumpIfFalse => "JMPF",
+                Jump => "JMP",
+                Loop => "LOOP",
+            }
+        )
     }
 }
 
@@ -123,10 +133,7 @@ impl Chunk {
                 println!("{}", instruction);
                 offset += 1;
             }
-            OpCode::Constant 
-            | OpCode::DefineGlobal
-            | OpCode::GetGlobal 
-            | OpCode::SetGlobal => {
+            OpCode::Constant | OpCode::DefineGlobal | OpCode::GetGlobal | OpCode::SetGlobal => {
                 let constant = self.instructions[offset + 1];
                 print!("{:8} {:4} '", instruction.to_string(), constant);
                 //TODO: replace when Value type evolve:
@@ -134,11 +141,22 @@ impl Chunk {
                 println!("'");
                 offset += 2;
             }
-            OpCode::GetLocal
-            | OpCode::SetLocal => {
-                let slot = self.instructions[offset+1];
+            OpCode::GetLocal | OpCode::SetLocal => {
+                let slot = self.instructions[offset + 1];
                 println!("{:8} {:4}", instruction.to_string(), slot);
                 offset += 2;
+            }
+            OpCode::Jump | OpCode::JumpIfFalse => {
+                let mut jump = (self.instructions[offset + 1] as u16) << 8;
+                jump |= self.instructions[offset + 2] as u16;                
+                println!("{:8} {:4} -> {}", instruction.to_string(), offset, offset + 3 + jump as usize);
+                offset += 3;
+            }
+            OpCode::Loop => {
+                let mut jump = (self.instructions[offset + 1] as u16) << 8;
+                jump |= self.instructions[offset + 2] as u16;                
+                println!("{:8} {:4} -> {}", instruction.to_string(), offset, offset + 3 - jump as usize);
+                offset += 3;
             }
             _ => {
                 println!("Unknown:{:?}", instruction);
