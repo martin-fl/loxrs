@@ -7,17 +7,17 @@ Adapted from craftinginterpreters.com
 Using rust nightly (for box patterns) : 
 
 ```rust
-cargo build
+cargo build --release
 ```
 
 ## Running
 
 In REPL mode:
 ```rust
-cargo run
+cargo run --release
 ```
 
 From a file:
 ```rust
-cargo run <file>
+cargo run --release <file>
 ```
