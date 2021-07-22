@@ -401,8 +401,8 @@ impl VM {
         if let Value::Obj(box Object::Native(_) | box Object::Function(_)) = callee {
             match callee {
                 Value::Obj(box Object::Function(f)) => self.call(f, arg_count, line),
-                Value::Obj(box Object::Native(n)) => {
-                    let result = n.0.deref()(
+                Value::Obj(box Object::Native(f)) => {
+                    let result = f.0.deref()(
                         arg_count,
                         &self.stack.borrow()
                             [(self.stack_top.get() - arg_count)..self.stack_top.get()],
