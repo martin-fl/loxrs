@@ -1,6 +1,8 @@
+use crate::chunk::Chunk;
+
+use std::cell::RefCell;
 use std::fmt;
 use std::rc::Rc;
-use std::cell::RefCell;
 
 #[derive(Debug, Clone, PartialOrd, PartialEq)]
 pub enum Value {
@@ -50,6 +52,17 @@ impl Value {
             _ => false,
         }
     }
+
+    pub fn is_function(&self) -> bool {
+        #[allow(unreachable_patterns)]
+        match self {
+            Value::Obj(box object) => match object {
+                Object::Function(_) => true,
+                _ => false,
+            },
+            _ => false,
+        }
+    }
 }
 
 impl fmt::Display for Value {
@@ -65,19 +78,19 @@ impl fmt::Display for Value {
     }
 }
 
-// This ended up being a poor choice, but any other way would have
-// been a pain to implement and use
-#[derive(Debug, Clone, PartialEq)]
+// This ended up being a poor choice, but any other
+// way would have been a pain to implement and use
+#[derive(Debug, Clone, PartialOrd, PartialEq)]
 pub enum Object {
     String(String),
-    Function(FunctionObject),
+    Function(Rc<RefCell<FunctionObject>>),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialOrd, PartialEq)]
 pub struct FunctionObject {
-    arity: usize,
-    chunk: Rc<RefCell<Chunk>>,
-    name: Object,
+    pub(crate) arity: usize,
+    pub(crate) chunk: Rc<RefCell<Chunk>>,
+    pub(crate) name: Object,
 }
 
 impl FunctionObject {
@@ -95,7 +108,7 @@ impl fmt::Display for Object {
         #[allow(unreachable_patterns)]
         match self {
             Object::String(s) => write!(f, "\"{}\"", s),
-            Object::Function(f) => write!(f, "{}", f),
+            Object::Function(fun) => write!(f, "{}", (*fun).borrow().name),
             _ => unreachable!(),
         }
     }
@@ -103,10 +116,14 @@ impl fmt::Display for Object {
 
 impl fmt::Display for FunctionObject {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if let Object::String(s) = self.name { 
-            write!(f, "<function {}>", s)
+        if let Object::String(s) = &self.name {
+            if s.len() > 0 {
+                write!(f, "<fn {}>", s)
+            } else {
+                write!(f, "<script>")
+            }
         } else {
-            write!(f, "<function <corrupted>>")
+            write!(f, "<fn <corrupted>>")
         }
     }
 }

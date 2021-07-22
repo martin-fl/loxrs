@@ -1,6 +1,6 @@
-use crate::chunk::{Chunk, OpCode};
-use crate::compiler::Compiler;
-use crate::value::{Object, Value};
+use crate::chunk::OpCode;
+use crate::compiler::{Compiler, FunctionType};
+use crate::value::{FunctionObject, Object, Value};
 use crate::LoxError;
 use crate::DEBUG;
 
@@ -9,9 +9,11 @@ use std::collections::HashMap;
 use std::fmt;
 use std::fs::File;
 use std::io::{self, Read, Write};
+use std::ops::Deref;
+use std::rc::Rc;
 
 macro_rules! binary_op_number {
-    ($self:ident,$op:tt) => {
+    ($self:ident,$op:tt,$get_line:ident) => {
         match ($self.peek(0),$self.peek(1)) {
             (Value::Number(_),Value::Number(_)) => {
                 if let Value::Number(right) = $self.pop() {
@@ -20,7 +22,7 @@ macro_rules! binary_op_number {
                     }
                 }
             },
-            _ => return Err(InterpretError::RuntimeError(LoxError::new("Operands must be two numbers", $self.get_line())))
+            _ => return Err(InterpretError::RuntimeError(LoxError::new("Operands must be two numbers", $get_line!())))
         }
     };
 }
@@ -40,11 +42,16 @@ impl fmt::Display for InterpretError {
     }
 }
 
-// Note: the VM leaks memory when handling objects
-pub struct VM {
-    chunk: Option<Box<Chunk>>,
+#[derive(Debug)]
+struct CallFrame {
+    function: Rc<RefCell<FunctionObject>>,
     ip: usize,
-    //stack: RefCell<[Value; VM::STACK_MAX]>,
+    slots: usize,
+}
+
+// Note: the VM leaks memory when handling objects?
+pub struct VM {
+    frames: Vec<CallFrame>,
     stack: RefCell<Vec<Value>>,
     stack_top: Cell<usize>,
     globals: HashMap<String, Value>,
@@ -53,8 +60,7 @@ pub struct VM {
 impl VM {
     pub fn new() -> Self {
         Self {
-            chunk: None,
-            ip: 0,
+            frames: Vec::new(),
             stack: RefCell::new(Vec::new()),
             stack_top: Cell::new(0),
             globals: HashMap::new(),
@@ -94,26 +100,80 @@ impl VM {
     }
 
     fn interpret(&mut self, source: &str) -> Result<(), InterpretError> {
-        let mut chunk = Chunk::new();
-
-        chunk = Compiler::new(source)
-            .compile(chunk)
+        let function = Compiler::new(source, FunctionType::Script)
+            .compile()
             .map_err(|e| InterpretError::CompileError(e))?;
 
-        self.chunk = Some(Box::new(chunk));
-        self.ip = 0;
+        self.push(Value::Obj(Box::new(Object::Function(Rc::clone(&function)))));
+        self.call(Rc::clone(&function), 0, 0)?;
 
         self.run()
     }
 
-    // Note: assumes chunk is Some(_)
+    // Note: assumes theres is a callframe at the top of self.frames
     fn run(&mut self) -> Result<(), InterpretError> {
-        let instructions = &self.chunk.as_ref().unwrap().instructions;
-        let constants = &self.chunk.as_ref().unwrap().constants;
-        if DEBUG {
-            print!("\n== VM BACKTRACE ==")
+        let mut curr_frame = self.frames.len() - 1;
+
+        macro_rules! frame {
+            () => {
+                self.frames[curr_frame]
+            };
         }
-        while self.ip < instructions.len() {
+        macro_rules! frame_slots {
+            ($slot:expr) => {
+                self.stack.borrow()[self.frames[curr_frame].slots + $slot].clone()
+            };
+        }
+        macro_rules! frame_slots_mut {
+            ($slot:expr) => {
+                self.stack.borrow_mut()[self.frames[curr_frame].slots + $slot]
+            };
+        }
+        macro_rules! frame_chunk {
+            () => {
+                self.frames[curr_frame]
+                    .function
+                    .deref()
+                    .borrow()
+                    .chunk
+                    .deref()
+                    .borrow()
+            };
+        }
+        macro_rules! get_line {
+            () => {
+                frame_chunk!().lines[frame!().ip]
+            };
+        }
+        macro_rules! read_byte {
+            () => {{
+                let ip = frame!().ip;
+                let ret = frame_chunk!().instructions[ip];
+                frame!().ip += 1;
+                ret
+            }};
+        }
+        macro_rules! read_short {
+            () => {{
+                frame!().ip += 2;
+                let ip = frame!().ip;
+                let prev_instr = frame_chunk!().instructions[ip - 2];
+                let curr_instr = frame_chunk!().instructions[ip - 1];
+                ((prev_instr as u16) << 8) | curr_instr as u16
+            }};
+        }
+        macro_rules! read_constant {
+            () => {{
+                let byte = read_byte!();
+                let val = frame_chunk!().constants[byte as usize].clone();
+                val
+            }};
+        }
+
+        if DEBUG {
+            println!("\n== VM BACKTRACE ==")
+        }
+        while frame!().ip < frame_chunk!().instructions.len() {
             if DEBUG {
                 print!("          ");
                 for i in 0..self.stack_top.get() {
@@ -121,88 +181,93 @@ impl VM {
                 }
                 println!();
 
-                self.chunk
-                    .as_ref()
-                    .unwrap()
-                    .disassemble_instruction_at(self.ip);
+                frame_chunk!().disassemble_instruction_at(frame!().ip);
             }
 
             #[allow(unreachable_patterns)]
-            match instructions[self.ip].into() {
+            match read_byte!().into() {
+                OpCode::Call => {
+                    let arg_count = read_byte!();
+                    let callee = self.peek(arg_count as usize);
+                    let line = get_line!();
+                    self.call_value(callee, arg_count, line)?;
+                    curr_frame = self.frames.len() - 1;
+                }
                 OpCode::Return => {
-                    return Ok(());
+                    let result = self.pop();
+                    if self.frames.len() == 1 {
+                        self.pop();
+                        return Ok(());
+                    }
+                    let top = frame!().slots;
+                    self.stack_top.set(top);
+                    self.push(result);
+                    curr_frame -= 1;
+                    self.frames.pop();
                 }
                 OpCode::Pop => {
                     self.pop();
                 }
                 OpCode::Jump => {
-                    self.ip += 2;
-                    let offset : u16 = ((instructions[self.ip - 1] as u16) << 8) | instructions[self.ip - 0] as u16;
-                    self.ip += offset as usize;
+                    let offset = read_short!();
+                    frame!().ip += offset as usize;
+
                 }
                 OpCode::JumpIfFalse => {
-                    self.ip += 2;
-                    let offset : u16 = ((instructions[self.ip - 1] as u16) << 8) | instructions[self.ip - 0] as u16;
+                    let offset = read_short!();
                     if self.peek(0).is_falsey() {
-                        self.ip += offset as usize;
+                        frame!().ip += offset as usize;
                     }
                 }
                 OpCode::Loop => {
-                    self.ip += 2;
-                    let offset : u16 = ((instructions[self.ip - 1] as u16) << 8) | instructions[self.ip - 0] as u16;
-                    self.ip -= offset as usize; 
+                    let offset = read_short!();
+                    frame!().ip -= offset as usize;
                 }
                 OpCode::Print => println!("{}", self.pop()),
                 OpCode::DefineGlobal => {
-                    self.ip += 1;
-                    let name = constants[instructions[self.ip] as usize].clone();
+                    let name = read_constant!().clone();
                     if let Value::Obj(box Object::String(name)) = name {
                         self.globals.insert(name, self.peek(0));
                         self.pop();
                     }
                 }
                 OpCode::GetGlobal => {
-                    self.ip += 1;
-                    let name = constants[instructions[self.ip] as usize].clone();
+                    let name = read_constant!();
                     if let Value::Obj(box Object::String(name)) = name {
                         if let Some(value) = self.globals.get(&name) {
                             self.push(value.clone());
                         } else {
                             return Err(InterpretError::RuntimeError(LoxError::new(
                                 "Undefined variable.",
-                                self.get_line(),
+                                get_line!(),
                             )));
                         }
                     }
                 }
                 OpCode::SetGlobal => {
-                    self.ip += 1;
-                    let name = constants[instructions[self.ip] as usize].clone();
+                    let name = read_constant!();
                     if let Value::Obj(box Object::String(name)) = name {
                         if self.globals.contains_key(&name) {
                             self.globals.insert(name, self.peek(0));
                         } else {
                             return Err(InterpretError::RuntimeError(LoxError::new(
                                 "Undefined variable.",
-                                self.get_line(),
+                                get_line!(),
                             )));
                         }
                     }
                 }
                 OpCode::GetLocal => {
-                    self.ip += 1;
-                    let slot = instructions[self.ip];
-                    let local = self.stack.borrow()[slot as usize].clone();
+                    let slot = read_byte!();
+                    let local = frame_slots!(slot as usize);
                     self.push(local);
                 }
                 OpCode::SetLocal => {
-                    self.ip += 1;
-                    let slot = instructions[self.ip];
-                    self.stack.borrow_mut()[slot as usize] = self.peek(0).clone();
+                    let slot = read_byte!();
+                    frame_slots_mut!(slot as usize) = self.peek(0).clone();
                 }
                 OpCode::Constant => {
-                    self.ip += 1;
-                    let constant = constants[instructions[self.ip] as usize].clone();
+                    let constant = read_constant!();
                     self.push(constant);
                 }
                 OpCode::Nil => self.push(Value::Nil),
@@ -225,7 +290,7 @@ impl VM {
                     _ => {
                         return Err(InterpretError::RuntimeError(LoxError::new(
                             "Operands must be two numbers",
-                            self.get_line(),
+                            get_line!(),
                         )))
                     }
                 },
@@ -240,7 +305,7 @@ impl VM {
                     _ => {
                         return Err(InterpretError::RuntimeError(LoxError::new(
                             "Operands must be two numbers",
-                            self.get_line(),
+                            get_line!(),
                         )))
                     }
                 },
@@ -267,22 +332,21 @@ impl VM {
                     } else {
                         return Err(InterpretError::RuntimeError(LoxError::new(
                             "Operands must be two numbers",
-                            self.get_line(),
+                            get_line!(),
                         )));
                     }
                 }
-                OpCode::Substract => binary_op_number!(self, -),
-                OpCode::Multiply => binary_op_number!(self, *),
-                OpCode::Divide => binary_op_number!(self, /),
+                OpCode::Substract => binary_op_number!(self, -, get_line),
+                OpCode::Multiply => binary_op_number!(self, *, get_line),
+                OpCode::Divide => binary_op_number!(self, /, get_line),
 
                 OpCode::Negate => {
                     if let Value::Number(x) = self.peek(0) {
                         self.stack.borrow_mut()[self.stack_top.get() - 1] = Value::Number(-x);
-                    // self.push(-self.pop()),
                     } else {
                         return Err(InterpretError::RuntimeError(LoxError::new(
                             "Operand must be a number",
-                            self.get_line(),
+                            get_line!(),
                         )));
                     }
                 }
@@ -290,33 +354,58 @@ impl VM {
                 _ => {
                     return Err(InterpretError::CompileError(LoxError::new(
                         "Unknown OpCode",
-                        self.get_line(),
+                        get_line!(),
                     )))
                 }
             }
-            self.ip += 1;
         }
         Ok(())
     }
 
     fn push(&self, value: Value) {
-        self.stack.borrow_mut().push(value);
+        if self.stack_top.get() == self.stack.borrow().len() {
+            self.stack.borrow_mut().push(value);
+        } else {
+            self.stack.borrow_mut()[self.stack_top.get()] = value;
+        }
         self.stack_top.set(self.stack_top.get() + 1);
     }
 
     fn pop(&self) -> Value {
-        self.stack_top.set(self.stack_top.get() - 1);
-        self.stack
-            .borrow_mut()
-            .pop()
-            .expect("Can't pop an empty stack.")
-    }
-
-    fn get_line(&self) -> usize {
-        self.chunk.as_ref().unwrap().lines[self.ip]
+        if self.stack_top.get() == self.stack.borrow().len() {
+            self.stack_top.set(self.stack_top.get() - 1); 
+            self.stack
+                .borrow_mut()
+                .pop()
+                .expect("Can't pop an empty stack.")
+        } else {
+            self.stack_top.set(self.stack_top.get() - 1); 
+            self.stack.borrow()[self.stack_top.get()].clone()
+        }
     }
 
     fn peek(&self, distance: usize) -> Value {
         self.stack.borrow()[self.stack_top.get() - 1 - distance].clone()
+    }
+
+    fn call_value(&mut self, callee: Value, arg_count: u8, line: usize) -> Result<(), InterpretError> {
+        if let Value::Obj(box Object::Function(f)) = callee {
+            self.call(f, arg_count, line)
+        } else {
+            Err(InterpretError::RuntimeError(LoxError::new("Can only call functions and classes.",line)))
+        }
+        
+    }
+
+    fn call(&mut self, function: Rc<RefCell<FunctionObject>>, arg_count: u8, line: usize) -> Result<(), InterpretError> {
+        if function.deref().borrow().arity != arg_count as usize {
+            return Err(InterpretError::RuntimeError(LoxError::new("Wrong number of arguments.",line)));
+        }
+        self.frames.push(CallFrame {
+            function: Rc::clone(&function),
+            ip: 0,
+            slots: self.stack_top.get() - arg_count as usize - 1,
+        });
+        Ok(())
     }
 }

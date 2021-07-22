@@ -1,5 +1,9 @@
-var s = "string";
-
-for (var i = 0; i < 5; i = i + 1) {
-	print s = s + s;
+fun fib(n) {
+	if (n <= 1) {
+		return n;
+	} else {
+		return fib(n-1) + fib(n-2);
+	}
 }
+
+print fib(16);

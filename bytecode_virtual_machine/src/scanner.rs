@@ -71,7 +71,7 @@ impl Token {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Scanner<'sca> {
     pub(crate) source: &'sca str,
     pub(crate) source_chars: Vec<char>,

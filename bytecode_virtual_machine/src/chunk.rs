@@ -30,6 +30,7 @@ define_enum! {
     JumpIfFalse = 21,
     Jump = 22,
     Loop = 23,
+    Call = 24,
 }
 
 impl fmt::Display for OpCode {
@@ -63,12 +64,13 @@ impl fmt::Display for OpCode {
                 JumpIfFalse => "JMPF",
                 Jump => "JMP",
                 Loop => "LOOP",
+                Call => "CALL",
             }
         )
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialOrd, PartialEq)]
 pub struct Chunk {
     pub(crate) lines: Vec<usize>,
     pub(crate) instructions: Vec<u8>,
@@ -141,21 +143,31 @@ impl Chunk {
                 println!("'");
                 offset += 2;
             }
-            OpCode::GetLocal | OpCode::SetLocal => {
+            OpCode::GetLocal | OpCode::SetLocal | OpCode::Call => {
                 let slot = self.instructions[offset + 1];
                 println!("{:8} {:4}", instruction.to_string(), slot);
                 offset += 2;
             }
             OpCode::Jump | OpCode::JumpIfFalse => {
                 let mut jump = (self.instructions[offset + 1] as u16) << 8;
-                jump |= self.instructions[offset + 2] as u16;                
-                println!("{:8} {:4} -> {}", instruction.to_string(), offset, offset + 3 + jump as usize);
+                jump |= self.instructions[offset + 2] as u16;
+                println!(
+                    "{:8} {:4} -> {}",
+                    instruction.to_string(),
+                    offset,
+                    offset + 3 + jump as usize
+                );
                 offset += 3;
             }
             OpCode::Loop => {
                 let mut jump = (self.instructions[offset + 1] as u16) << 8;
-                jump |= self.instructions[offset + 2] as u16;                
-                println!("{:8} {:4} -> {}", instruction.to_string(), offset, offset + 3 - jump as usize);
+                jump |= self.instructions[offset + 2] as u16;
+                println!(
+                    "{:8} {:4} -> {}",
+                    instruction.to_string(),
+                    offset,
+                    offset + 3 - jump as usize
+                );
                 offset += 3;
             }
             _ => {

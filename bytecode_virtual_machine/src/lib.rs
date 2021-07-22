@@ -51,7 +51,7 @@ impl fmt::Display for LoxError {
     }
 }
 
-const DEBUG: bool = true;
+const DEBUG: bool = false;
 
 #[macro_export]
 macro_rules! define_enum {

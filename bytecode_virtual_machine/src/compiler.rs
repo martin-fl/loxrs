@@ -1,6 +1,6 @@
 use crate::chunk::{Chunk, OpCode};
 use crate::scanner::{Scanner, Token, TokenType};
-use crate::value::{Object, Value};
+use crate::value::{FunctionObject, Object, Value};
 use crate::LoxError;
 use crate::DEBUG;
 
@@ -48,15 +48,24 @@ impl Default for Local {
     }
 }
 
+#[derive(Clone, Eq, PartialEq)]
+pub enum FunctionType {
+    Function,
+    Script,
+}
+
 // TODO split the compiler into a Parser and a Generator, instead of doing everything in it
+#[derive(Clone)]
 pub struct Compiler<'c> {
     // Compiler related fields
+    function: Rc<RefCell<FunctionObject>>,
+    ty: FunctionType,
+
     locals: [Local; u8::MAX as usize + 1],
     local_count: usize,
     scope_depth: usize,
 
     // Generator related fields
-    compiling_chunk: Rc<RefCell<Chunk>>,
 
     // Parsing related fields
     scanner: Scanner<'c>,
@@ -68,12 +77,15 @@ pub struct Compiler<'c> {
 
 // Compiling/Generating impls
 impl<'c> Compiler<'c> {
-    pub fn new(source: &'c str) -> Self {
+    pub fn new(source: &'c str, ty: FunctionType) -> Self {
         Self {
+            ty,
+            function: Rc::new(RefCell::new(FunctionObject::new())),
+
             locals: [Local::default(); u8::MAX as usize + 1],
-            local_count: 0,
+            // the first one is reserved for the VM
+            local_count: 1,
             scope_depth: 0,
-            compiling_chunk: Rc::new(RefCell::new(Chunk::new())),
 
             scanner: Scanner::new(source),
             current: Token::new(TokenType::EOF, 0, 0, 0),
@@ -83,15 +95,43 @@ impl<'c> Compiler<'c> {
         }
     }
 
-    pub fn compile(&'c mut self, chunk: Chunk) -> Result<Chunk, LoxError> {
-        self.compiling_chunk = Rc::new(RefCell::new(chunk));
+    pub fn new_from(compiler: Self, ty: FunctionType) -> Self {
+        let mut func = FunctionObject::new();
+        if ty != FunctionType::Script {
+            func.name = Object::String(
+                compiler.scanner.source
+                    [(compiler.previous.start)..(compiler.previous.start + compiler.previous.len)]
+                    .to_string(),
+            );
+        }
 
+        Self {
+            ty,
+            function: Rc::new(RefCell::new(func)),
+
+            locals: [Local::default(); u8::MAX as usize + 1],
+            local_count: 1,
+            scope_depth: 0,
+
+            scanner: compiler.scanner,
+            current: compiler.current,
+            previous: compiler.previous,
+            had_error: compiler.had_error,
+            panic_mode: compiler.panic_mode,
+        }
+    }
+
+    pub fn compile(&'c mut self) -> Result<Rc<RefCell<FunctionObject>>, LoxError> {
         self.advance();
 
         while !self.advance_if_current_is(TokenType::EOF) {
             self.declaration();
         }
 
+        self.end_compilation()
+    }
+
+    fn end_compilation(&mut self) -> Result<Rc<RefCell<FunctionObject>>, LoxError> {
         if self.had_error {
             return Err(LoxError::from_token(
                 "Error during compilation.",
@@ -101,13 +141,23 @@ impl<'c> Compiler<'c> {
 
         self.emit_return();
         if DEBUG && !self.had_error {
-            self.current_chunk().deref().borrow().disassemble("CODE");
+            self.current_chunk().deref().borrow().disassemble(
+                if let Object::String(s) = &self.function.deref().borrow().name {
+                    if s.len() > 0 {
+                        s
+                    } else {
+                        "<script>"
+                    }
+                } else {
+                    "<script>"
+                },
+            );
         }
-        Ok((*self.compiling_chunk).take())
+        Ok(Rc::clone(&self.function))
     }
 
     fn current_chunk(&self) -> Rc<RefCell<Chunk>> {
-        Rc::clone(&self.compiling_chunk)
+        Rc::clone(&(*self.function).borrow().chunk)
     }
 
     fn emit_byte(&mut self, byte: u8) {
@@ -145,7 +195,8 @@ impl<'c> Compiler<'c> {
     }
 
     fn emit_return(&mut self) {
-        self.emit_byte(OpCode::Return as u8)
+        self.emit_byte(OpCode::Nil as u8);
+        self.emit_byte(OpCode::Return as u8);
     }
 
     fn emit_jump(&mut self, instruction: OpCode) -> usize {
@@ -160,7 +211,10 @@ impl<'c> Compiler<'c> {
         let jump = (*current_chunk).borrow().instructions.len() - offset - 2;
 
         if jump > u16::MAX as usize {
-            self.report_error(LoxError::from_token("Too much code to jump over.", self.current));
+            self.report_error(LoxError::from_token(
+                "Too much code to jump over.",
+                self.current,
+            ));
         }
 
         (*current_chunk).borrow_mut().instructions[offset] = ((jump >> 8) & 0xFF) as u8;
@@ -170,10 +224,10 @@ impl<'c> Compiler<'c> {
     fn emit_loop(&mut self, loop_start: usize) {
         self.emit_byte(OpCode::Loop as u8);
         let offset = (*self.current_chunk()).borrow().instructions.len() - loop_start + 2;
-        if offset > u16::MAX as usize { 
+        if offset > u16::MAX as usize {
             self.report_error(LoxError::from_token("Loop body too large", self.current));
         }
-        self.emit_byte(((offset>>8) & 0xFF) as u8);
+        self.emit_byte(((offset >> 8) & 0xFF) as u8);
         self.emit_byte((offset & 0xFF) as u8);
     }
 }
@@ -272,9 +326,32 @@ impl<'c> Compiler<'c> {
 
         self.patch_jump(else_jump);
         self.emit_byte(OpCode::Pop as u8);
-        
+
         self.parse_precedence(Precedence::Or);
         self.patch_jump(end_jump);
+    }
+
+    fn call(&mut self, _:bool) {
+        let arg_count = self.argument_list();
+        self.emit_bytes(OpCode::Call as u8, arg_count);
+    }
+
+    fn argument_list(&mut self) -> u8 {
+        let mut arg_count = 0u8;
+        if !self.current_is(TokenType::RightParen) {
+            loop {
+                self.expression();
+                if arg_count == 255 {
+                    self.report_error(LoxError::from_token("Can't have more than 255 arguments.",self.current));
+                }
+                arg_count += 1;
+                if !self.advance_if_current_is(TokenType::Comma) {
+                    break;
+                }
+            }
+        }
+        self.consume_if_current_is(TokenType::RightParen, "Expected ')' after arguments.");
+        arg_count
     }
 
     fn named_variable(&mut self, name: Token, can_assign: bool) {
@@ -354,7 +431,9 @@ impl<'c> Compiler<'c> {
     }
 
     fn declaration(&mut self) {
-        if self.advance_if_current_is(TokenType::Var) {
+        if self.advance_if_current_is(TokenType::Fun) {
+            self.fun_declaration();
+        } else if self.advance_if_current_is(TokenType::Var) {
             self.var_declaration();
         } else {
             self.statement();
@@ -362,6 +441,57 @@ impl<'c> Compiler<'c> {
 
         if self.panic_mode {
             self.synchronize();
+        }
+    }
+
+    fn fun_declaration(&mut self) {
+        let global = self.parse_variable("Expected function name.");
+        self.mark_initialized();
+        self.function(FunctionType::Function);
+        self.define_variable(global);
+    }
+
+    fn function(&mut self, ty: FunctionType) {
+        let mut compiler = Compiler::new_from(self.clone(), ty);
+        compiler.begin_scope();
+        compiler.consume_if_current_is(TokenType::LeftParen, "Expected '(' after function name.");
+        if !compiler.current_is(TokenType::RightParen) {
+            loop {
+                compiler.function.deref().borrow_mut().arity += 1;
+                if compiler.function.deref().borrow_mut().arity > 255 {
+                    compiler.report_error(LoxError::from_token(
+                        "Can't have more than 255 parameters.",
+                        compiler.current,
+                    ));
+                }
+                let constant = compiler.parse_variable("Expected parameter name.");
+                compiler.define_variable(constant);
+
+                if !self.advance_if_current_is(TokenType::Comma) {
+                    break;
+                }
+            }
+        }
+
+        compiler.consume_if_current_is(
+            TokenType::RightParen,
+            "Expected ')' after function parameters.",
+        );
+        compiler.consume_if_current_is(TokenType::LeftBrace, "Expected '{' before function body.");
+        compiler.block();
+
+        let function = compiler.end_compilation();
+        self.scanner = compiler.scanner;
+        self.current = compiler.current;
+        self.previous = compiler.previous;
+        self.had_error = compiler.had_error;
+        self.panic_mode = compiler.panic_mode;
+        if let Ok(function) = function {
+            let constant =
+                self.make_constant(Value::Obj(Box::new(Object::Function(Rc::clone(&function)))));
+            self.emit_bytes(OpCode::Constant as u8, constant);
+        } else {
+            self.report_error(function.unwrap_err());
         }
     }
 
@@ -392,6 +522,9 @@ impl<'c> Compiler<'c> {
     }
 
     fn mark_initialized(&mut self) {
+        if self.scope_depth == 0 {
+            return;
+        }
         self.locals[self.local_count - 1].depth = self.scope_depth;
         self.locals[self.local_count - 1].is_initialized = true;
     }
@@ -450,7 +583,9 @@ impl<'c> Compiler<'c> {
             self.for_statement();
         } else if self.advance_if_current_is(TokenType::If) {
             self.if_statement();
-        } else if self.advance_if_current_is(TokenType::While) { 
+        } else if self.advance_if_current_is(TokenType::Return) {
+            self.return_statement();
+        } else if self.advance_if_current_is(TokenType::While) {
             self.while_statement();
         } else if self.advance_if_current_is(TokenType::LeftBrace) {
             self.begin_scope();
@@ -490,17 +625,14 @@ impl<'c> Compiler<'c> {
     fn for_statement(&mut self) {
         self.begin_scope();
 
-        self.consume_if_current_is(TokenType::LeftParen,"Expected '(' after 'for'.");
+        self.consume_if_current_is(TokenType::LeftParen, "Expected '(' after 'for'.");
 
         if self.advance_if_current_is(TokenType::Semicolon) {
-    
         } else if self.advance_if_current_is(TokenType::Var) {
             self.var_declaration();
         } else {
             self.expression_statement();
         }
-
-
 
         let mut loop_start = (*self.current_chunk()).borrow().instructions.len();
 
@@ -522,7 +654,7 @@ impl<'c> Compiler<'c> {
             self.expression();
             self.emit_byte(OpCode::Pop as u8);
             self.consume_if_current_is(TokenType::RightParen, "Expect ')' after for clauses.");
-            
+
             self.emit_loop(loop_start);
             loop_start = increment_start;
             self.patch_jump(body_jump);
@@ -534,7 +666,7 @@ impl<'c> Compiler<'c> {
         if let Some(exit_jump) = exit_jump {
             self.patch_jump(exit_jump);
             self.emit_byte(OpCode::Pop as u8);
-        } 
+        }
 
         self.end_scope();
     }
@@ -555,6 +687,20 @@ impl<'c> Compiler<'c> {
             self.statement();
         }
         self.patch_jump(else_jump);
+    }
+
+    fn return_statement(&mut self) {
+        if self.ty == FunctionType::Script {
+            self.report_error(LoxError::from_token("Can't return from top-level code", self.current));
+        }
+
+        if self.advance_if_current_is(TokenType::Semicolon) {
+            self.emit_return();
+        } else {
+            self.expression();
+            self.consume_if_current_is(TokenType::Semicolon, "Expected ';' after return value.");
+            self.emit_byte(OpCode::Return as u8);
+        }
     }
 
     fn print_statement(&mut self) {
@@ -636,8 +782,8 @@ impl<'c> Compiler<'c> {
         match op {
             LeftParen => ParseRule {
                 prefix: Some(Self::grouping),
-                infix: None,
-                prec: Precedence::None,
+                infix: Some(Self::call),
+                prec: Precedence::Call,
             },
             Bang => ParseRule {
                 prefix: Some(Self::unary),
