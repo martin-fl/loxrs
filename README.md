@@ -4,6 +4,8 @@ Adapted from craftinginterpreters.com
 
 ## Building
 
+Using rust nightly (for box patterns) : 
+
 ```rust
 cargo build
 ```
@@ -17,5 +19,5 @@ cargo run
 
 From a file:
 ```rust
-carg run script
+cargo run <file>
 ```

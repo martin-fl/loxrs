@@ -83,7 +83,7 @@ impl<'c> Compiler<'c> {
             function: Rc::new(RefCell::new(FunctionObject::new())),
 
             locals: [Local::default(); u8::MAX as usize + 1],
-            // the first one is reserved for the VM
+            // the first one is reserved for callframe's name
             local_count: 1,
             scope_depth: 0,
 
@@ -110,6 +110,7 @@ impl<'c> Compiler<'c> {
             function: Rc::new(RefCell::new(func)),
 
             locals: [Local::default(); u8::MAX as usize + 1],
+            // the first one is reserved for callframe's name
             local_count: 1,
             scope_depth: 0,
 
