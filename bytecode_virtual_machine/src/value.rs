@@ -43,24 +43,26 @@ impl Value {
     }
 
     pub fn is_string(&self) -> bool {
-        #[allow(unreachable_patterns)]
-        match self {
-            Value::Obj(box object) => match object {
-                Object::String(_) => true,
-                _ => false,
-            },
-            _ => false,
+        if let Value::Obj(box Object::String(_)) = self {
+            true
+        } else {
+            false
         }
     }
 
     pub fn is_function(&self) -> bool {
-        #[allow(unreachable_patterns)]
-        match self {
-            Value::Obj(box object) => match object {
-                Object::Function(_) => true,
-                _ => false,
-            },
-            _ => false,
+        if let Value::Obj(box Object::Function(_)) = self {
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn is_native(&self) -> bool {
+        if let Value::Obj(box Object::Native(_)) = self {
+            true
+        } else {
+            false
         }
     }
 }
@@ -84,6 +86,7 @@ impl fmt::Display for Value {
 pub enum Object {
     String(String),
     Function(Rc<RefCell<FunctionObject>>),
+    Native(NativeFn),
 }
 
 #[derive(Debug, Clone, PartialOrd, PartialEq)]
@@ -103,11 +106,42 @@ impl FunctionObject {
     }
 }
 
+#[derive(Clone)]
+pub struct NativeFn(pub Rc<dyn Fn(usize, &[Value]) -> Value>);
+
+impl std::cmp::PartialEq for NativeFn {
+    fn eq(&self, _: &Self) -> bool {
+        false
+    }
+
+    fn ne(&self, _: &Self) -> bool {
+        false
+    }
+}
+
+impl std::cmp::PartialOrd for NativeFn {
+    fn partial_cmp(&self, _: &NativeFn) -> Option<std::cmp::Ordering> {
+        None
+    }
+}
+
+impl fmt::Debug for NativeFn {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self)
+    }
+}
+
+impl fmt::Display for NativeFn {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "<native fn>")
+    }
+}
+
 impl fmt::Display for Object {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         #[allow(unreachable_patterns)]
         match self {
-            Object::String(s) => write!(f, "\"{}\"", s),
+            Object::String(s) => write!(f, "{}", s),
             Object::Function(fun) => write!(f, "{}", (*fun).borrow().name),
             _ => unreachable!(),
         }

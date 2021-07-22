@@ -1,6 +1,6 @@
 use crate::chunk::OpCode;
 use crate::compiler::{Compiler, FunctionType};
-use crate::value::{FunctionObject, Object, Value};
+use crate::value::{FunctionObject, NativeFn, Object, Value};
 use crate::LoxError;
 use crate::DEBUG;
 
@@ -11,6 +11,7 @@ use std::fs::File;
 use std::io::{self, Read, Write};
 use std::ops::Deref;
 use std::rc::Rc;
+use std::time;
 
 macro_rules! binary_op_number {
     ($self:ident,$op:tt,$get_line:ident) => {
@@ -59,12 +60,16 @@ pub struct VM {
 
 impl VM {
     pub fn new() -> Self {
-        Self {
+        let mut ret = Self {
             frames: Vec::new(),
             stack: RefCell::new(Vec::new()),
             stack_top: Cell::new(0),
             globals: HashMap::new(),
-        }
+        };
+
+        ret.define_native("clock".to_string(), Rc::new(clock_native));
+
+        ret
     }
 
     pub fn run_prompt(&mut self) -> io::Result<()> {
@@ -187,8 +192,8 @@ impl VM {
             #[allow(unreachable_patterns)]
             match read_byte!().into() {
                 OpCode::Call => {
-                    let arg_count = read_byte!();
-                    let callee = self.peek(arg_count as usize);
+                    let arg_count = read_byte!() as usize;
+                    let callee = self.peek(arg_count);
                     let line = get_line!();
                     self.call_value(callee, arg_count, line)?;
                     curr_frame = self.frames.len() - 1;
@@ -211,7 +216,6 @@ impl VM {
                 OpCode::Jump => {
                     let offset = read_short!();
                     frame!().ip += offset as usize;
-
                 }
                 OpCode::JumpIfFalse => {
                     let offset = read_short!();
@@ -373,13 +377,13 @@ impl VM {
 
     fn pop(&self) -> Value {
         if self.stack_top.get() == self.stack.borrow().len() {
-            self.stack_top.set(self.stack_top.get() - 1); 
+            self.stack_top.set(self.stack_top.get() - 1);
             self.stack
                 .borrow_mut()
                 .pop()
                 .expect("Can't pop an empty stack.")
         } else {
-            self.stack_top.set(self.stack_top.get() - 1); 
+            self.stack_top.set(self.stack_top.get() - 1);
             self.stack.borrow()[self.stack_top.get()].clone()
         }
     }
@@ -388,24 +392,71 @@ impl VM {
         self.stack.borrow()[self.stack_top.get() - 1 - distance].clone()
     }
 
-    fn call_value(&mut self, callee: Value, arg_count: u8, line: usize) -> Result<(), InterpretError> {
-        if let Value::Obj(box Object::Function(f)) = callee {
-            self.call(f, arg_count, line)
+    fn call_value(
+        &mut self,
+        callee: Value,
+        arg_count: usize,
+        line: usize,
+    ) -> Result<(), InterpretError> {
+        if let Value::Obj(box Object::Native(_) | box Object::Function(_)) = callee {
+            match callee {
+                Value::Obj(box Object::Function(f)) => self.call(f, arg_count, line),
+                Value::Obj(box Object::Native(n)) => {
+                    let result = n.0.deref()(
+                        arg_count,
+                        &self.stack.borrow()
+                            [(self.stack_top.get() - arg_count)..self.stack_top.get()],
+                    );
+                    self.stack_top.set(self.stack_top.get() - arg_count - 1);
+                    self.push(result);
+                    Ok(())
+                }
+                _ => unreachable!(),
+            }
         } else {
-            Err(InterpretError::RuntimeError(LoxError::new("Can only call functions and classes.",line)))
+            Err(InterpretError::RuntimeError(LoxError::new(
+                "Can only call functions and classes.",
+                line,
+            )))
         }
-        
     }
 
-    fn call(&mut self, function: Rc<RefCell<FunctionObject>>, arg_count: u8, line: usize) -> Result<(), InterpretError> {
-        if function.deref().borrow().arity != arg_count as usize {
-            return Err(InterpretError::RuntimeError(LoxError::new("Wrong number of arguments.",line)));
+    fn call(
+        &mut self,
+        function: Rc<RefCell<FunctionObject>>,
+        arg_count: usize,
+        line: usize,
+    ) -> Result<(), InterpretError> {
+        if function.deref().borrow().arity != arg_count {
+            return Err(InterpretError::RuntimeError(LoxError::new(
+                "Wrong number of arguments.",
+                line,
+            )));
         }
         self.frames.push(CallFrame {
             function: Rc::clone(&function),
             ip: 0,
-            slots: self.stack_top.get() - arg_count as usize - 1,
+            slots: self.stack_top.get() - arg_count - 1,
         });
         Ok(())
     }
+
+    fn define_native(&mut self, name: String, function: Rc<dyn Fn(usize, &[Value]) -> Value>) {
+        self.push(Value::Obj(Box::new(Object::String(name.clone()))));
+        self.push(Value::Obj(Box::new(Object::Native(NativeFn(Rc::clone(&function))))));
+        self.globals.insert(name, self.stack.borrow()[1].clone());
+        self.pop();
+        self.pop();
+    }
+}
+
+// NATIVES
+fn clock_native(_: usize, _: &[Value]) -> Value {
+    return Value::Number(
+        time::SystemTime::now()
+            .duration_since(time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs_f64()
+            //.as_nanos() as f64,
+    );
 }

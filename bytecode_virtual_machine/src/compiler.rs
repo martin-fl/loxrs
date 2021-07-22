@@ -332,7 +332,7 @@ impl<'c> Compiler<'c> {
         self.patch_jump(end_jump);
     }
 
-    fn call(&mut self, _:bool) {
+    fn call(&mut self, _: bool) {
         let arg_count = self.argument_list();
         self.emit_bytes(OpCode::Call as u8, arg_count);
     }
@@ -343,7 +343,10 @@ impl<'c> Compiler<'c> {
             loop {
                 self.expression();
                 if arg_count == 255 {
-                    self.report_error(LoxError::from_token("Can't have more than 255 arguments.",self.current));
+                    self.report_error(LoxError::from_token(
+                        "Can't have more than 255 arguments.",
+                        self.current,
+                    ));
                 }
                 arg_count += 1;
                 if !self.advance_if_current_is(TokenType::Comma) {
@@ -692,7 +695,10 @@ impl<'c> Compiler<'c> {
 
     fn return_statement(&mut self) {
         if self.ty == FunctionType::Script {
-            self.report_error(LoxError::from_token("Can't return from top-level code", self.current));
+            self.report_error(LoxError::from_token(
+                "Can't return from top-level code",
+                self.current,
+            ));
         }
 
         if self.advance_if_current_is(TokenType::Semicolon) {

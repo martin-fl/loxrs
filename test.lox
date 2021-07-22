@@ -6,4 +6,10 @@ fun fib(n) {
 	}
 }
 
-print fib(16);
+//for (var i = 0; i < 35; i = i + 1) {
+var start = clock();
+//print fib(i);
+print fib(35);
+print clock() - start;
+//}
+
