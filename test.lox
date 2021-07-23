@@ -6,10 +6,20 @@ fun fib(n) {
 	}
 }
 
-//for (var i = 0; i < 35; i = i + 1) {
 var start = clock();
-//print fib(i);
 print fib(35);
 print clock() - start;
-//}
 
+//fun sum(n) {
+//	var acc = 0;
+//	for (var i = 1; i <= n; i = i + 1) {
+//		acc = acc + i;
+//	}
+//	return acc;
+//}
+//
+//var start = clock();
+//var n = 100000000;
+//print sum(n);
+//print clock() - start;
+////print n*(n+1)/2;

@@ -2,6 +2,7 @@ use crate::chunk::Chunk;
 
 use std::cell::RefCell;
 use std::fmt;
+use std::ops::Deref;
 use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialOrd, PartialEq)]
@@ -65,6 +66,14 @@ impl Value {
             false
         }
     }
+
+    pub fn is_closure(&self) -> bool {
+        if let Value::Obj(box Object::Closure(_)) = self {
+            true
+        } else {
+            false
+        }
+    }
 }
 
 impl fmt::Display for Value {
@@ -87,6 +96,7 @@ pub enum Object {
     String(String),
     Function(Rc<RefCell<FunctionObject>>),
     Native(NativeFn),
+    Closure(Closure),
 }
 
 #[derive(Debug, Clone, PartialOrd, PartialEq)]
@@ -105,6 +115,9 @@ impl FunctionObject {
         }
     }
 }
+
+#[derive(Debug, Clone, PartialOrd, PartialEq)]
+pub struct Closure(pub Rc<RefCell<FunctionObject>>);
 
 #[derive(Clone)]
 pub struct NativeFn(pub Rc<dyn Fn(usize, &[Value]) -> Value>);
@@ -141,8 +154,10 @@ impl fmt::Display for Object {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         #[allow(unreachable_patterns)]
         match self {
-            Object::String(s) => write!(f, "{}", s),
-            Object::Function(fun) => write!(f, "{}", (*fun).borrow().name),
+            Object::String(s) => write!(f, "\"{}\"", s),
+            Object::Function(fun) => write!(f, "{}", fun.deref().borrow().name),
+            Object::Native(fun) => write!(f, "{}", fun),
+            Object::Closure(fun) => write!(f, "{}", fun.0.deref().borrow().name),
             _ => unreachable!(),
         }
     }

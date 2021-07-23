@@ -157,15 +157,18 @@ impl<'c> Compiler<'c> {
         Ok(Rc::clone(&self.function))
     }
 
+    #[inline]
     fn current_chunk(&self) -> Rc<RefCell<Chunk>> {
         Rc::clone(&(*self.function).borrow().chunk)
     }
 
+    #[inline]
     fn emit_byte(&mut self, byte: u8) {
         let line = self.previous.line;
         (*self.current_chunk()).borrow_mut().push_byte(byte, line)
     }
 
+    #[inline]
     fn emit_bytes(&mut self, byte1: u8, byte2: u8) {
         self.emit_byte(byte1);
         self.emit_byte(byte2);
@@ -184,22 +187,26 @@ impl<'c> Compiler<'c> {
         }
     }
 
+    #[inline]
     fn make_identifier_constant(&mut self, token: Token) -> u8 {
         self.make_constant(Value::Obj(Box::new(Object::String(
             self.scanner.source[token.start..(token.start + token.len)].to_string(),
         ))))
     }
 
+    #[inline]
     fn emit_constant(&mut self, value: Value) {
         let constant = self.make_constant(value);
         self.emit_bytes(OpCode::Constant as u8, constant);
     }
 
+    #[inline]
     fn emit_return(&mut self) {
         self.emit_byte(OpCode::Nil as u8);
         self.emit_byte(OpCode::Return as u8);
     }
 
+    #[inline]
     fn emit_jump(&mut self, instruction: OpCode) -> usize {
         self.emit_byte(instruction as u8);
         self.emit_byte(0xFF);
@@ -249,11 +256,13 @@ impl<'c> Compiler<'c> {
         }
     }
 
+    #[inline]
     fn grouping(&mut self, _: bool) {
         self.expression();
         self.consume_if_current_is(TokenType::RightParen, "Expected ')' after expression.");
     }
 
+    #[inline]
     fn number(&mut self, _: bool) {
         let value = self.scanner.source
             [self.previous.start..(self.previous.start + self.previous.len)]
@@ -262,6 +271,7 @@ impl<'c> Compiler<'c> {
         self.emit_constant(Value::Number(value));
     }
 
+    #[inline]
     fn string(&mut self, _: bool) {
         let value = self.scanner.source
             [(self.previous.start + 1)..(self.previous.start + self.previous.len - 1)]
@@ -269,6 +279,7 @@ impl<'c> Compiler<'c> {
         self.emit_constant(Value::Obj(Box::new(Object::String(value))))
     }
 
+    #[inline]
     fn unary(&mut self, _: bool) {
         let op_ty = self.previous.ty;
 
@@ -281,6 +292,7 @@ impl<'c> Compiler<'c> {
         }
     }
 
+    #[inline]
     fn binary(&mut self, _: bool) {
         let op_ty = self.previous.ty;
         let rule = Self::get_rule(op_ty);
@@ -301,6 +313,7 @@ impl<'c> Compiler<'c> {
         }
     }
 
+    #[inline]
     fn literal(&mut self, _: bool) {
         match self.previous.ty {
             TokenType::False => self.emit_byte(OpCode::False as u8),
@@ -310,10 +323,12 @@ impl<'c> Compiler<'c> {
         }
     }
 
+    #[inline]
     fn variable(&mut self, can_assign: bool) {
         self.named_variable(self.previous, can_assign);
     }
 
+    #[inline]
     fn and(&mut self, _: bool) {
         let end_jump = self.emit_jump(OpCode::JumpIfFalse);
         self.emit_byte(OpCode::Pop as u8);
@@ -321,6 +336,7 @@ impl<'c> Compiler<'c> {
         self.patch_jump(end_jump);
     }
 
+    #[inline]
     fn or(&mut self, _: bool) {
         let else_jump = self.emit_jump(OpCode::JumpIfFalse);
         let end_jump = self.emit_jump(OpCode::Jump);
@@ -332,11 +348,13 @@ impl<'c> Compiler<'c> {
         self.patch_jump(end_jump);
     }
 
+    #[inline]
     fn call(&mut self, _: bool) {
         let arg_count = self.argument_list();
         self.emit_bytes(OpCode::Call as u8, arg_count);
     }
 
+    #[inline]
     fn argument_list(&mut self) -> u8 {
         let mut arg_count = 0u8;
         if !self.current_is(TokenType::RightParen) {
@@ -358,6 +376,7 @@ impl<'c> Compiler<'c> {
         arg_count
     }
 
+    #[inline]
     fn named_variable(&mut self, name: Token, can_assign: bool) {
         let mut arg = self.resolve_local(name);
         let (set_op, get_op) = if arg.is_some() {
@@ -375,12 +394,14 @@ impl<'c> Compiler<'c> {
         }
     }
 
+    #[inline]
     fn identifiers_are_equal(&self, a: &Token, b: &Token) -> bool {
         (a.len == b.len)
             && (&self.scanner.source[a.start..(a.start + a.len)]
                 == &self.scanner.source[b.start..(b.start + b.len)])
     }
 
+    #[inline]
     fn resolve_local(&mut self, name: Token) -> Option<u8> {
         for i in (0..self.local_count).rev() {
             if self.identifiers_are_equal(&self.locals[i].name, &name) {
@@ -397,6 +418,7 @@ impl<'c> Compiler<'c> {
         None
     }
 
+    #[inline]
     fn parse_precedence(&mut self, prec: Precedence) {
         self.advance();
         let prefix_rule = Self::get_rule(self.previous.ty).prefix;
@@ -430,10 +452,12 @@ impl<'c> Compiler<'c> {
         }
     }
 
+    #[inline]
     fn expression(&mut self) {
         self.parse_precedence(Precedence::Assignment);
     }
 
+    #[inline]
     fn declaration(&mut self) {
         if self.advance_if_current_is(TokenType::Fun) {
             self.fun_declaration();
@@ -448,6 +472,7 @@ impl<'c> Compiler<'c> {
         }
     }
 
+    #[inline]
     fn fun_declaration(&mut self) {
         let global = self.parse_variable("Expected function name.");
         self.mark_initialized();
@@ -455,6 +480,7 @@ impl<'c> Compiler<'c> {
         self.define_variable(global);
     }
 
+    #[inline]
     fn function(&mut self, ty: FunctionType) {
         let mut compiler = Compiler::new_from(self.clone(), ty);
         compiler.begin_scope();
@@ -493,12 +519,13 @@ impl<'c> Compiler<'c> {
         if let Ok(function) = function {
             let constant =
                 self.make_constant(Value::Obj(Box::new(Object::Function(Rc::clone(&function)))));
-            self.emit_bytes(OpCode::Constant as u8, constant);
+            self.emit_bytes(OpCode::Closure as u8, constant);
         } else {
             self.report_error(function.unwrap_err());
         }
     }
 
+    #[inline]
     fn var_declaration(&mut self) {
         let global = self.parse_variable("Expected a variable name.");
 
@@ -516,6 +543,7 @@ impl<'c> Compiler<'c> {
         self.define_variable(global);
     }
 
+    #[inline]
     fn parse_variable(&mut self, error_message: &'static str) -> u8 {
         self.consume_if_current_is(TokenType::Identifier, error_message);
         self.declare_variable();
@@ -525,6 +553,7 @@ impl<'c> Compiler<'c> {
         return self.make_identifier_constant(self.previous);
     }
 
+    #[inline]
     fn mark_initialized(&mut self) {
         if self.scope_depth == 0 {
             return;
@@ -533,6 +562,7 @@ impl<'c> Compiler<'c> {
         self.locals[self.local_count - 1].is_initialized = true;
     }
 
+    #[inline]
     fn define_variable(&mut self, global: u8) {
         if self.scope_depth > 0 {
             self.mark_initialized();
@@ -541,6 +571,7 @@ impl<'c> Compiler<'c> {
         self.emit_bytes(OpCode::DefineGlobal as u8, global);
     }
 
+    #[inline]
     fn declare_variable(&mut self) {
         if self.scope_depth == 0 {
             return;
@@ -565,6 +596,7 @@ impl<'c> Compiler<'c> {
         self.add_local(name);
     }
 
+    #[inline]
     fn add_local(&mut self, name: Token) {
         if self.local_count == u8::MAX as usize + 1 {
             self.report_error(LoxError::from_token(
@@ -580,6 +612,7 @@ impl<'c> Compiler<'c> {
         local.depth = self.scope_depth;
     }
 
+    #[inline]
     fn statement(&mut self) {
         if self.advance_if_current_is(TokenType::Print) {
             self.print_statement();
@@ -600,6 +633,7 @@ impl<'c> Compiler<'c> {
         }
     }
 
+    #[inline]
     fn block(&mut self) {
         while !self.current_is(TokenType::RightBrace) && !self.current_is(TokenType::EOF) {
             self.declaration();
@@ -607,10 +641,12 @@ impl<'c> Compiler<'c> {
         self.consume_if_current_is(TokenType::RightBrace, "Expect '}' after block.");
     }
 
+    #[inline]
     fn begin_scope(&mut self) {
         self.scope_depth += 1;
     }
 
+    #[inline]
     fn end_scope(&mut self) {
         self.scope_depth -= 1;
 
@@ -620,12 +656,14 @@ impl<'c> Compiler<'c> {
         }
     }
 
+    #[inline]
     fn expression_statement(&mut self) {
         self.expression();
         self.consume_if_current_is(TokenType::Semicolon, "Expected ';' after expression.");
         self.emit_byte(OpCode::Pop as u8);
     }
 
+    #[inline]
     fn for_statement(&mut self) {
         self.begin_scope();
 
@@ -675,6 +713,7 @@ impl<'c> Compiler<'c> {
         self.end_scope();
     }
 
+    #[inline]
     fn if_statement(&mut self) {
         self.consume_if_current_is(TokenType::LeftParen, "Expected '(' after 'if'.");
         self.expression();
@@ -693,6 +732,7 @@ impl<'c> Compiler<'c> {
         self.patch_jump(else_jump);
     }
 
+    #[inline]
     fn return_statement(&mut self) {
         if self.ty == FunctionType::Script {
             self.report_error(LoxError::from_token(
@@ -710,12 +750,14 @@ impl<'c> Compiler<'c> {
         }
     }
 
+    #[inline]
     fn print_statement(&mut self) {
         self.expression();
         self.consume_if_current_is(TokenType::Semicolon, "Expected ';' after expression.");
         self.emit_byte(OpCode::Print as u8);
     }
 
+    #[inline]
     fn while_statement(&mut self) {
         let loop_start = (*self.current_chunk()).borrow().instructions.len();
         self.consume_if_current_is(TokenType::LeftParen, "Expected '(' after 'while'.");
@@ -731,6 +773,7 @@ impl<'c> Compiler<'c> {
         self.emit_byte(OpCode::Pop as u8);
     }
 
+    #[inline]
     fn synchronize(&mut self) {
         self.panic_mode = false;
         while self.current.ty != TokenType::EOF {
@@ -754,6 +797,7 @@ impl<'c> Compiler<'c> {
         }
     }
 
+    #[inline]
     fn consume_if_current_is(&mut self, ty: TokenType, message: &'static str) {
         if self.current.ty == ty {
             self.advance();
@@ -762,10 +806,12 @@ impl<'c> Compiler<'c> {
         }
     }
 
+    #[inline]
     fn current_is(&self, ty: TokenType) -> bool {
         self.current.ty == ty
     }
 
+    #[inline]
     fn advance_if_current_is(&mut self, ty: TokenType) -> bool {
         if !self.current_is(ty) {
             false
@@ -775,6 +821,7 @@ impl<'c> Compiler<'c> {
         }
     }
 
+    #[inline]
     fn report_error(&mut self, e: LoxError) {
         if self.panic_mode {
             return;
@@ -784,6 +831,7 @@ impl<'c> Compiler<'c> {
         self.had_error = true;
     }
 
+    #[inline]
     fn get_rule(op: TokenType) -> ParseRule<'c> {
         use TokenType::*;
         match op {

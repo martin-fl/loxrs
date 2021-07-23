@@ -81,6 +81,7 @@ pub struct Scanner<'sca> {
 }
 
 impl<'sca> Scanner<'sca> {
+    #[inline]
     pub fn new(source: &'sca str) -> Self {
         Self {
             source,
@@ -153,15 +154,18 @@ impl<'sca> Scanner<'sca> {
         }
     }
 
+    #[inline]
     fn advance(&mut self) -> char {
         self.current += 1;
         self.source_chars[self.current - 1]
     }
 
+    #[inline]
     fn is_at_end(&self) -> bool {
         self.current == self.source_chars.len()
     }
 
+    #[inline]
     fn advance_if_current_is(&mut self, expected: char) -> bool {
         if self.is_at_end() || self.peek() != expected {
             false
@@ -171,6 +175,7 @@ impl<'sca> Scanner<'sca> {
         }
     }
 
+    #[inline]
     fn skip_white_space(&mut self) {
         loop {
             let c = self.peek();
@@ -192,6 +197,7 @@ impl<'sca> Scanner<'sca> {
         }
     }
 
+    #[inline]
     fn peek(&self) -> char {
         if self.is_at_end() {
             '\0'
@@ -200,6 +206,7 @@ impl<'sca> Scanner<'sca> {
         }
     }
 
+    #[inline]
     fn peek_next(&self) -> char {
         if self.is_at_end() {
             '\0'
@@ -208,10 +215,12 @@ impl<'sca> Scanner<'sca> {
         }
     }
 
+    #[inline]
     fn make_token(&self, ty: TokenType) -> Token {
         Token::new(ty, self.start, self.current - self.start, self.line)
     }
 
+    #[inline]
     fn make_string_token(&mut self) -> Result<Token, LoxError> {
         while self.peek() != '"' && !self.is_at_end() {
             if self.peek() == '\n' {
@@ -229,6 +238,7 @@ impl<'sca> Scanner<'sca> {
         Ok(self.make_token(TokenType::String))
     }
 
+    #[inline]
     fn make_number_token(&mut self) -> Result<Token, LoxError> {
         while self.peek().is_ascii_digit() {
             self.advance();
@@ -244,6 +254,7 @@ impl<'sca> Scanner<'sca> {
         Ok(self.make_token(TokenType::Number))
     }
 
+    #[inline]
     fn make_identifier_token(&mut self) -> Result<Token, LoxError> {
         while self.peek().is_alphanumeric() || self.peek() == '_' {
             self.advance();
@@ -252,6 +263,7 @@ impl<'sca> Scanner<'sca> {
         Ok(self.make_token(self.get_identifier_type()))
     }
 
+    #[inline]
     fn get_identifier_type(&self) -> TokenType {
         match self.source_chars[self.start] {
             'a' => self.check_keyword(1, 2, "nd", TokenType::And),
@@ -280,6 +292,7 @@ impl<'sca> Scanner<'sca> {
         }
     }
 
+    #[inline]
     fn check_keyword(
         &self,
         start: usize,

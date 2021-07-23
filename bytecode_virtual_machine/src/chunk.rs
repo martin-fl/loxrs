@@ -31,6 +31,7 @@ define_enum! {
     Jump = 22,
     Loop = 23,
     Call = 24,
+    Closure = 25,
 }
 
 impl fmt::Display for OpCode {
@@ -65,6 +66,7 @@ impl fmt::Display for OpCode {
                 Jump => "JMP",
                 Loop => "LOOP",
                 Call => "CALL",
+                Closure => "CLSR",
             }
         )
     }
@@ -137,7 +139,7 @@ impl Chunk {
             }
             OpCode::Constant | OpCode::DefineGlobal | OpCode::GetGlobal | OpCode::SetGlobal => {
                 let constant = self.instructions[offset + 1];
-                print!("{:8} {:4} '", instruction.to_string(), constant);
+                print!("{:12} {:4} '", instruction.to_string(), constant);
                 //TODO: replace when Value type evolve:
                 print!("{}", self.constants[constant as usize]);
                 println!("'");
@@ -145,14 +147,14 @@ impl Chunk {
             }
             OpCode::GetLocal | OpCode::SetLocal | OpCode::Call => {
                 let slot = self.instructions[offset + 1];
-                println!("{:8} {:4}", instruction.to_string(), slot);
+                println!("{:12} {:4}", instruction.to_string(), slot);
                 offset += 2;
             }
             OpCode::Jump | OpCode::JumpIfFalse => {
                 let mut jump = (self.instructions[offset + 1] as u16) << 8;
                 jump |= self.instructions[offset + 2] as u16;
                 println!(
-                    "{:8} {:4} -> {}",
+                    "{:12} {:4} -> {}",
                     instruction.to_string(),
                     offset,
                     offset + 3 + jump as usize
@@ -163,12 +165,23 @@ impl Chunk {
                 let mut jump = (self.instructions[offset + 1] as u16) << 8;
                 jump |= self.instructions[offset + 2] as u16;
                 println!(
-                    "{:8} {:4} -> {}",
+                    "{:12} {:4} -> {}",
                     instruction.to_string(),
                     offset,
                     offset + 3 - jump as usize
                 );
                 offset += 3;
+            }
+            OpCode::Closure => {
+                offset += 1;
+                let constant = self.instructions[offset];
+                offset += 1;
+                println!(
+                    "{:12} {:4} {}",
+                    instruction.to_string(),
+                    constant,
+                    self.constants[constant as usize]
+                );
             }
             _ => {
                 println!("Unknown:{:?}", instruction);
