@@ -5,6 +5,7 @@ pub mod compiler;
 pub mod lexer;
 pub mod value;
 pub mod vm;
+pub mod error;
 
 use lexer::{Token, TokenType};
 
