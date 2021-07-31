@@ -2,11 +2,11 @@
 
 pub mod chunk;
 pub mod compiler;
-pub mod scanner;
+pub mod lexer;
 pub mod value;
 pub mod vm;
 
-use scanner::{Token, TokenType};
+use lexer::{Token, TokenType};
 
 #[derive(Debug)]
 pub struct LoxError {

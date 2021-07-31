@@ -1,5 +1,5 @@
 use crate::chunk::{Chunk, OpCode};
-use crate::scanner::{Scanner, Token, TokenType};
+use crate::lexer::{Lexer, Token, TokenType};
 use crate::value::{FunctionObject, Object, Value};
 use crate::LoxError;
 use crate::DEBUG;
@@ -68,7 +68,7 @@ pub struct Compiler<'c> {
     // Generator related fields
 
     // Parsing related fields
-    scanner: Scanner<'c>,
+    scanner: Lexer<'c>,
     current: Token,
     previous: Token,
     had_error: bool,
@@ -87,7 +87,7 @@ impl<'c> Compiler<'c> {
             local_count: 1,
             scope_depth: 0,
 
-            scanner: Scanner::new(source),
+            scanner: Lexer::new(source),
             current: Token::new(TokenType::EOF, 0, 0, 0),
             previous: Token::new(TokenType::EOF, 0, 0, 0),
             had_error: false,

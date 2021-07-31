@@ -72,7 +72,7 @@ impl Token {
 }
 
 #[derive(Clone, Debug)]
-pub struct Scanner<'sca> {
+pub struct Lexer<'sca> {
     pub(crate) source: &'sca str,
     pub(crate) source_chars: Vec<char>,
     pub(crate) start: usize,
@@ -80,7 +80,7 @@ pub struct Scanner<'sca> {
     pub(crate) line: usize,
 }
 
-impl<'sca> Scanner<'sca> {
+impl<'sca> Lexer<'sca> {
     #[inline]
     pub fn new(source: &'sca str) -> Self {
         Self {
