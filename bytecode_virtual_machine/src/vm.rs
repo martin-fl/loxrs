@@ -401,7 +401,6 @@ impl VM {
         }
     }
 
-    #[inline]
     fn peek<'a>(&'a self, distance: usize) -> &'a Value {
         &self.stack[self.stack_top - 1 - distance]
     }
