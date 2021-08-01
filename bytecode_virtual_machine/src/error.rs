@@ -50,24 +50,35 @@ impl fmt::Display for Error {
         writeln!(f, "error: {}", self.message)?;
         let indent = self.line.to_string().len() + 1;
         writeln!(f, "{:width$}|", "", width = indent)?;
-        writeln!(f, "{:<width$}| {}", self.line, &self.content, width = indent)?;
+        writeln!(
+            f,
+            "{:<width$}| {}",
+            self.line,
+            &self.content,
+            width = indent
+        )?;
         if let Some((start, len)) = self.span {
-            let hint = self.content.chars().enumerate().map(|(i,c)| {
-                if start <= i && i < start + len {
-                    '^'
-                } else if !c.is_whitespace() {
-                    ' '
-                } else {
-                    c
-                }
-            }).collect::<String>();
-            writeln!(f, "{:<width$}| {}", "", hint, width = indent)?;
+            let hint = self
+                .content
+                .chars()
+                .enumerate()
+                .map(|(i, c)| {
+                    if start <= i && i < start + len {
+                        '^'
+                    } else if !c.is_whitespace() {
+                        ' '
+                    } else {
+                        c
+                    }
+                })
+                .collect::<String>();
+            writeln!(f, "{:width$}| {}", "", hint, width = indent)?;
         } else {
             writeln!(f, "{:width$}|", "", width = indent)?;
         }
         writeln!(f, "{:width$}|", "", width = indent)?;
         if let Some(help) = &self.help {
-            writeln!(f, "{:width$} = help: {}", help, width = indent)?;
+            writeln!(f, "{:width$}~ help: {}", "", help, width = indent)?;
         }
         Ok(())
     }

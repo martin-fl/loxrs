@@ -230,7 +230,7 @@ impl<'c> Compiler<'c> {
         let jump = (*current_chunk).borrow().instructions.len() - offset - 2;
 
         if jump > u16::MAX as usize {
-            self.new_error(self.emit_error("too much code to jump over"));
+            self.new_error(self.emit_error("too much code to jump over").with_help("consider splitting code into functions"));
         }
 
         (*current_chunk).borrow_mut().instructions[offset] = ((jump >> 8) & 0xFF) as u8;
@@ -241,7 +241,7 @@ impl<'c> Compiler<'c> {
         self.emit_byte(OpCode::Loop as u8);
         let offset = (*self.current_chunk()).borrow().instructions.len() - loop_start + 2;
         if offset > u16::MAX as usize {
-            self.new_error(self.emit_error("loop body too large"));
+            self.new_error(self.emit_error("loop body too large").with_help("consider splitting code into functions"));
         }
         self.emit_byte(((offset >> 8) & 0xFF) as u8);
         self.emit_byte((offset & 0xFF) as u8);
@@ -567,7 +567,7 @@ impl<'c> Compiler<'c> {
                 //    "Already a variable with this name in this scope.",
                 //    name,
                 //));
-                self.new_error(self.emit_error("already a variable with this name in this scope"));
+                self.new_error(self.emit_error("a variable with this name already exists in this scope").with_help("consider renaming the variable"));
             }
         }
 
