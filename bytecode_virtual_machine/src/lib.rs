@@ -4,6 +4,7 @@ pub mod chunk;
 pub mod compiler;
 pub mod error;
 pub mod lexer;
+pub mod prompt;
 pub mod value;
 pub mod vm;
 

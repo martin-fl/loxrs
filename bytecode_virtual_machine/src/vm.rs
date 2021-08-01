@@ -1,12 +1,13 @@
 use crate::chunk::OpCode;
 use crate::compiler::{Compiler, FunctionType};
 use crate::error::{EmitError, Error};
+use crate::prompt::Prompt;
 use crate::value::{Closure, NativeFn, Object, Value};
 use crate::DEBUG;
 
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::{self, Read, Write};
+use std::io::{self, Read};
 use std::ops::Deref;
 use std::rc::Rc;
 use std::time;
@@ -39,8 +40,8 @@ impl VM {
         let mut ret = Self {
             source: String::new(),
             frames: Vec::new(),
-            stack: Vec::with_capacity(u8::MAX as usize), //RefCell::new(Vec::new()),
-            stack_top: 0,                                //Cell::new(0),
+            stack: Vec::with_capacity(u8::MAX as usize),
+            stack_top: 0,
             globals: HashMap::new(),
         };
 
@@ -50,15 +51,11 @@ impl VM {
     }
 
     pub fn run_prompt(&mut self) -> io::Result<()> {
-        let stdin = io::stdin();
-        let mut stdout = io::stdout();
+        let mut prompt = Prompt::new("lox> ");
+        println!("Validate an empty line to quit.");
         self.source = "  ".to_string();
-
         while self.source.len() > 1 {
-            self.source.clear();
-            print!("lox> ");
-            let _ = stdout.flush();
-            stdin.read_line(&mut self.source)?;
+            self.source = prompt.ask()?;
             match self.interpret() {
                 Ok(()) => {}
                 Err(es) => es.iter().for_each(|e| eprint!("{}", e)),

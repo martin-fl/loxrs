@@ -71,7 +71,6 @@ pub struct Compiler<'c> {
     scanner: Lexer<'c>,
     current: Token,
     previous: Token,
-    had_error: bool,
     panic_mode: bool,
 
     errors: Vec<Error>,
@@ -110,7 +109,6 @@ impl<'c> Compiler<'c> {
             scanner: Lexer::new(source),
             current: Token::new(TokenType::EOF, 0, 0, 0),
             previous: Token::new(TokenType::EOF, 0, 0, 0),
-            had_error: false,
             panic_mode: false,
 
             errors: Vec::new(),
@@ -139,7 +137,6 @@ impl<'c> Compiler<'c> {
             scanner: compiler.scanner,
             current: compiler.current,
             previous: compiler.previous,
-            had_error: compiler.had_error,
             panic_mode: compiler.panic_mode,
 
             errors: compiler.errors,
@@ -230,7 +227,10 @@ impl<'c> Compiler<'c> {
         let jump = (*current_chunk).borrow().instructions.len() - offset - 2;
 
         if jump > u16::MAX as usize {
-            self.new_error(self.emit_error("too much code to jump over").with_help("consider splitting code into functions"));
+            self.new_error(
+                self.emit_error("too much code to jump over")
+                    .with_help("consider splitting code into functions"),
+            );
         }
 
         (*current_chunk).borrow_mut().instructions[offset] = ((jump >> 8) & 0xFF) as u8;
@@ -241,7 +241,10 @@ impl<'c> Compiler<'c> {
         self.emit_byte(OpCode::Loop as u8);
         let offset = (*self.current_chunk()).borrow().instructions.len() - loop_start + 2;
         if offset > u16::MAX as usize {
-            self.new_error(self.emit_error("loop body too large").with_help("consider splitting code into functions"));
+            self.new_error(
+                self.emit_error("loop body too large")
+                    .with_help("consider splitting code into functions"),
+            );
         }
         self.emit_byte(((offset >> 8) & 0xFF) as u8);
         self.emit_byte((offset & 0xFF) as u8);
@@ -428,12 +431,6 @@ impl<'c> Compiler<'c> {
                 }
             }
             None => {
-                println!(
-                    "{}, {:?}",
-                    &self.scanner.source
-                        [self.previous.start..(self.previous.start + self.previous.len)],
-                    self.previous
-                );
                 self.new_error(self.emit_error("expected expression"));
                 return;
             }
@@ -567,7 +564,10 @@ impl<'c> Compiler<'c> {
                 //    "Already a variable with this name in this scope.",
                 //    name,
                 //));
-                self.new_error(self.emit_error("a variable with this name already exists in this scope").with_help("consider renaming the variable"));
+                self.new_error(
+                    self.emit_error("a variable with this name already exists in this scope")
+                        .with_help("consider renaming the variable"),
+                );
             }
         }
 
