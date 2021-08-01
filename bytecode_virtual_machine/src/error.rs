@@ -7,7 +7,6 @@ pub struct Error {
     help: Option<String>,
     line: usize,
     span: Option<(usize, usize)>, // (start, len)
-                                  // file_name: String,
 }
 
 impl Error {
@@ -53,13 +52,16 @@ impl fmt::Display for Error {
         writeln!(f, "{:width$}|", "", width = indent)?;
         writeln!(f, "{:<width$}| {}", self.line, self.content, width = indent)?;
         if let Some((start, len)) = self.span {
+            let whitespace_start = self.content.find(|c: char| !c.is_whitespace()).expect("can't have an error on an empty line.");
+            let whitespace = &self.content[..whitespace_start];
             writeln!(
                 f,
-                "{:width$}| {:<start$}{:^<len$}",
+                "{:width$}| {}{:<start$}{:^<len$}",
+                "",
+                &whitespace,
                 "",
                 "",
-                "",
-                start = start,
+                start = start - whitespace.len(), // we already took care of whitespace
                 len = len,
                 width = indent
             )?;
