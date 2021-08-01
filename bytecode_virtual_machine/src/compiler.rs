@@ -79,15 +79,18 @@ pub struct Compiler<'c> {
 
 impl<'c> EmitError for Compiler<'c> {
     fn emit_error(&self, message: &str) -> Error {
-        Error::new(
-            self.scanner
-                .source
-                .lines()
-                .nth(self.previous.line - 1)
-                .expect("Error at a line that doesn't exist"),
-            message,
-            self.previous.line,
-        )
+        let lines = self.scanner.source.lines().enumerate();
+        let mut char_count = 0usize;
+        let mut target = "";
+        for (i, l) in lines {
+            if i < self.previous.line - 1 {
+                char_count += l.len();
+            } else {
+                target = l;
+            }
+        }
+        Error::new(target, message, self.previous.line)
+            .with_span(self.previous.start - char_count, self.previous.len)
     }
 }
 

@@ -53,7 +53,16 @@ impl fmt::Display for Error {
         writeln!(f, "{:width$}|", "", width = indent)?;
         writeln!(f, "{:width$}| {}", self.line, self.content, width = indent)?;
         if let Some((start, len)) = self.span {
-            todo!()
+            writeln!(
+                f,
+                "{:width$}| {:<start$}{:^<len$}",
+                "",
+                "",
+                "",
+                start = start,
+                len = len,
+                width = indent
+            )?;
         } else {
             writeln!(f, "{:width$}|", "", width = indent)?;
         }
