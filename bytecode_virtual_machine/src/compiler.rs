@@ -84,9 +84,10 @@ impl<'c> EmitError for Compiler<'c> {
         let mut target = "";
         for (i, l) in lines {
             if i < self.previous.line - 1 {
-                char_count += l.len();
+                char_count += l.len() + 1; // + 1 for \n at every line
             } else {
                 target = l;
+                break;
             }
         }
         Error::new(target, message, self.previous.line)

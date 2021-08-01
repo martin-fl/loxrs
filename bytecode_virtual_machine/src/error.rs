@@ -51,7 +51,7 @@ impl fmt::Display for Error {
         writeln!(f, "error: {}", self.message)?;
         let indent = self.line.to_string().len() + 1;
         writeln!(f, "{:width$}|", "", width = indent)?;
-        writeln!(f, "{:width$}| {}", self.line, self.content, width = indent)?;
+        writeln!(f, "{:<width$}| {}", self.line, self.content, width = indent)?;
         if let Some((start, len)) = self.span {
             writeln!(
                 f,

@@ -37,7 +37,7 @@ impl EmitError for VM {
 impl VM {
     pub fn new() -> Self {
         let mut ret = Self {
-            source: String::from("  "),
+            source: String::new(),
             frames: Vec::new(),
             stack: Vec::with_capacity(u8::MAX as usize), //RefCell::new(Vec::new()),
             stack_top: 0,                                //Cell::new(0),
@@ -52,6 +52,7 @@ impl VM {
     pub fn run_prompt(&mut self) -> io::Result<()> {
         let stdin = io::stdin();
         let mut stdout = io::stdout();
+        self.source = "  ".to_string();
 
         while self.source.len() > 1 {
             self.source.clear();
@@ -251,7 +252,7 @@ impl VM {
                             let value = value.clone();
                             self.push(value);
                         } else {
-                            return Err(error!("Undefined variable."));
+                            return Err(error!(&format!("Undefined variable '{}'.", name)));
                         }
                     }
                 }
@@ -261,7 +262,7 @@ impl VM {
                         if self.globals.contains_key(&name) {
                             self.globals.insert(name, self.peek(0).clone());
                         } else {
-                            return Err(error!("Undefined variable."));
+                            return Err(error!(&format!("Undefined variable '{}'.", name)));
                         }
                     }
                 }
@@ -394,7 +395,7 @@ impl VM {
             Err(self
                 .emit_error("Can only call functions and classes.")
                 .at_line(line)
-                .with_content(self.source.lines().nth(line).unwrap()))
+                .with_content(self.source.lines().nth(line - 1).unwrap()))
         }
     }
 
@@ -403,7 +404,7 @@ impl VM {
             return Err(self
                 .emit_error("Wrong number of arguments.")
                 .at_line(line)
-                .with_content(self.source.lines().nth(line).unwrap()));
+                .with_content(self.source.lines().nth(line - 1).unwrap()));
         }
         self.frames.push(CallFrame {
             closure,
