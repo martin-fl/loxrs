@@ -1,7 +1,7 @@
 use crate::chunk::{Chunk, OpCode};
+use crate::error::{EmitError, Error};
 use crate::lexer::{Lexer, Token, TokenType};
 use crate::value::{FunctionObject, Object, Value};
-use crate::LoxError;
 use crate::DEBUG;
 
 use crate::define_enum;
@@ -73,6 +73,22 @@ pub struct Compiler<'c> {
     previous: Token,
     had_error: bool,
     panic_mode: bool,
+
+    errors: Vec<Error>,
+}
+
+impl<'c> EmitError for Compiler<'c> {
+    fn emit_error(&self, message: &str) -> Error {
+        Error::new(
+            self.scanner
+                .source
+                .lines()
+                .nth(self.previous.line - 1)
+                .expect("Error at a line that doesn't exist"),
+            message,
+            self.previous.line,
+        )
+    }
 }
 
 // Compiling/Generating impls
@@ -92,6 +108,8 @@ impl<'c> Compiler<'c> {
             previous: Token::new(TokenType::EOF, 0, 0, 0),
             had_error: false,
             panic_mode: false,
+
+            errors: Vec::new(),
         }
     }
 
@@ -119,10 +137,12 @@ impl<'c> Compiler<'c> {
             previous: compiler.previous,
             had_error: compiler.had_error,
             panic_mode: compiler.panic_mode,
+
+            errors: compiler.errors,
         }
     }
 
-    pub fn compile(&'c mut self) -> Result<Rc<RefCell<FunctionObject>>, LoxError> {
+    pub fn compile(&mut self) -> Result<Rc<RefCell<FunctionObject>>, Vec<Error>> {
         self.advance();
 
         while !self.advance_if_current_is(TokenType::EOF) {
@@ -132,16 +152,13 @@ impl<'c> Compiler<'c> {
         self.end_compilation()
     }
 
-    fn end_compilation(&mut self) -> Result<Rc<RefCell<FunctionObject>>, LoxError> {
-        if self.had_error {
-            return Err(LoxError::from_token(
-                "Error during compilation.",
-                self.current,
-            ));
+    fn end_compilation(&mut self) -> Result<Rc<RefCell<FunctionObject>>, Vec<Error>> {
+        if self.errors.len() > 0 {
+            return Err(self.errors.clone());
         }
 
         self.emit_return();
-        if DEBUG && !self.had_error {
+        if DEBUG && self.errors.len() == 0 {
             self.current_chunk().deref().borrow().disassemble(
                 if let Object::String(s) = &self.function.deref().borrow().name {
                     if s.len() > 0 {
@@ -174,10 +191,7 @@ impl<'c> Compiler<'c> {
     fn make_constant(&mut self, value: Value) -> u8 {
         let constant = (*self.current_chunk()).borrow_mut().add_constant(value);
         if constant > std::u8::MAX as usize {
-            self.report_error(LoxError::from_token(
-                "Too many constants in one chunk.",
-                self.current,
-            ));
+            self.new_error(self.emit_error("Too many constants in one chunk."));
             0
         } else {
             constant as u8
@@ -212,10 +226,7 @@ impl<'c> Compiler<'c> {
         let jump = (*current_chunk).borrow().instructions.len() - offset - 2;
 
         if jump > u16::MAX as usize {
-            self.report_error(LoxError::from_token(
-                "Too much code to jump over.",
-                self.current,
-            ));
+            self.new_error(self.emit_error("Too much code to jump over."));
         }
 
         (*current_chunk).borrow_mut().instructions[offset] = ((jump >> 8) & 0xFF) as u8;
@@ -226,7 +237,7 @@ impl<'c> Compiler<'c> {
         self.emit_byte(OpCode::Loop as u8);
         let offset = (*self.current_chunk()).borrow().instructions.len() - loop_start + 2;
         if offset > u16::MAX as usize {
-            self.report_error(LoxError::from_token("Loop body too large", self.current));
+            self.new_error(self.emit_error("Loop body too large"));
         }
         self.emit_byte(((offset >> 8) & 0xFF) as u8);
         self.emit_byte((offset & 0xFF) as u8);
@@ -244,7 +255,7 @@ impl<'c> Compiler<'c> {
                     self.current = current;
                     break;
                 }
-                Err(e) => self.report_error(e),
+                Err(e) => self.new_error(e),
             }
         }
     }
@@ -343,10 +354,7 @@ impl<'c> Compiler<'c> {
             loop {
                 self.expression();
                 if arg_count == 255 {
-                    self.report_error(LoxError::from_token(
-                        "Can't have more than 255 arguments.",
-                        self.current,
-                    ));
+                    self.new_error(self.emit_error("Can't have more than 255 arguments."));
                 }
                 arg_count += 1;
                 if !self.advance_if_current_is(TokenType::Comma) {
@@ -385,10 +393,9 @@ impl<'c> Compiler<'c> {
         for i in (0..self.local_count).rev() {
             if self.identifiers_are_equal(&self.locals[i].name, &name) {
                 if !self.locals[i].is_initialized {
-                    self.report_error(LoxError::from_token(
-                        "Can't read local variable in its own initializer",
-                        name,
-                    ));
+                    self.new_error(
+                        self.emit_error("Can't read local variable in its own initializer"),
+                    );
                 }
                 return Some(i as u8);
             }
@@ -410,10 +417,7 @@ impl<'c> Compiler<'c> {
                     (infix_rule.unwrap())(self, can_assign);
 
                     if can_assign && self.advance_if_current_is(TokenType::Equal) {
-                        self.report_error(LoxError::from_token(
-                            "Invalid assignment target.",
-                            self.current,
-                        ))
+                        self.new_error(self.emit_error("Invalid assignment target."))
                     }
                 }
             }
@@ -424,7 +428,7 @@ impl<'c> Compiler<'c> {
                         [self.previous.start..(self.previous.start + self.previous.len)],
                     self.previous
                 );
-                self.report_error(LoxError::from_token("Expected expression.", self.current));
+                self.new_error(self.emit_error("Expected expression."));
                 return;
             }
         }
@@ -463,10 +467,7 @@ impl<'c> Compiler<'c> {
             loop {
                 compiler.function.deref().borrow_mut().arity += 1;
                 if compiler.function.deref().borrow_mut().arity > 255 {
-                    compiler.report_error(LoxError::from_token(
-                        "Can't have more than 255 parameters.",
-                        compiler.current,
-                    ));
+                    compiler.new_error(self.emit_error("Can't have more than 255 parameters."));
                 }
                 let constant = compiler.parse_variable("Expected parameter name.");
                 compiler.define_variable(constant);
@@ -488,14 +489,14 @@ impl<'c> Compiler<'c> {
         self.scanner = compiler.scanner;
         self.current = compiler.current;
         self.previous = compiler.previous;
-        self.had_error = compiler.had_error;
         self.panic_mode = compiler.panic_mode;
         if let Ok(function) = function {
             let constant =
                 self.make_constant(Value::Obj(Box::new(Object::Function(Rc::clone(&function)))));
             self.emit_bytes(OpCode::Closure as u8, constant);
         } else {
-            self.report_error(function.unwrap_err());
+            //self.new_error(function.unwrap_err());
+            self.errors.append(&mut function.unwrap_err());
         }
     }
 
@@ -555,10 +556,11 @@ impl<'c> Compiler<'c> {
             }
 
             if self.identifiers_are_equal(&local.name, &name) {
-                self.report_error(LoxError::from_token(
-                    "Already a variable with this name in this scope.",
-                    name,
-                ));
+                //self.new_error(LoxError::from_token(
+                //    "Already a variable with this name in this scope.",
+                //    name,
+                //));
+                self.new_error(self.emit_error("Already a variable with this name in this scope."));
             }
         }
 
@@ -567,10 +569,11 @@ impl<'c> Compiler<'c> {
 
     fn add_local(&mut self, name: Token) {
         if self.local_count == u8::MAX as usize + 1 {
-            self.report_error(LoxError::from_token(
-                "Too many local variables in function.",
-                name,
-            ));
+            //self.new_error(LoxError::from_token(
+            //    "Too many local variables in function.",
+            //    name,
+            //));
+            self.new_error(self.emit_error("Too many local variables in function."));
             return;
         }
 
@@ -695,10 +698,7 @@ impl<'c> Compiler<'c> {
 
     fn return_statement(&mut self) {
         if self.ty == FunctionType::Script {
-            self.report_error(LoxError::from_token(
-                "Can't return from top-level code",
-                self.current,
-            ));
+            self.new_error(self.emit_error("Can't return from top-level code"));
         }
 
         if self.advance_if_current_is(TokenType::Semicolon) {
@@ -758,7 +758,7 @@ impl<'c> Compiler<'c> {
         if self.current.ty == ty {
             self.advance();
         } else {
-            self.report_error(LoxError::from_token(message, self.current));
+            self.new_error(self.emit_error(message));
         }
     }
 
@@ -775,13 +775,12 @@ impl<'c> Compiler<'c> {
         }
     }
 
-    fn report_error(&mut self, e: LoxError) {
+    fn new_error(&mut self, e: Error) {
         if self.panic_mode {
             return;
         }
         self.panic_mode = true;
-        eprint!("{}", e);
-        self.had_error = true;
+        self.errors.push(e);
     }
 
     fn get_rule(op: TokenType) -> ParseRule<'c> {

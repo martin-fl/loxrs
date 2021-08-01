@@ -1,32 +1,15 @@
 use crate::chunk::OpCode;
 use crate::compiler::{Compiler, FunctionType};
-use crate::value::{NativeFn, Object, Value, Closure};
-use crate::LoxError;
+use crate::error::{EmitError, Error};
+use crate::value::{Closure, NativeFn, Object, Value};
 use crate::DEBUG;
 
 use std::collections::HashMap;
-use std::fmt;
 use std::fs::File;
 use std::io::{self, Read, Write};
 use std::ops::Deref;
 use std::rc::Rc;
 use std::time;
-
-
-#[derive(Debug)]
-pub enum InterpretError {
-    CompileError(LoxError),
-    RuntimeError(LoxError),
-}
-
-impl fmt::Display for InterpretError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            InterpretError::CompileError(e) => write!(f, "{}", e),
-            InterpretError::RuntimeError(e) => write!(f, "{}", e),
-        }
-    }
-}
 
 #[derive(Debug)]
 struct CallFrame {
@@ -38,18 +21,26 @@ struct CallFrame {
 // Note: the VM leaks memory when handling objects? because of rust's drop rule with regards to
 // boxes i'm not sure
 pub struct VM {
+    source: String,
     frames: Vec<CallFrame>,
     stack: Vec<Value>,
     stack_top: usize,
     globals: HashMap<String, Value>,
 }
 
+impl EmitError for VM {
+    fn emit_error(&self, message: &str) -> Error {
+        Error::new("", message, 0)
+    }
+}
+
 impl VM {
     pub fn new() -> Self {
         let mut ret = Self {
+            source: String::from("  "),
             frames: Vec::new(),
-            stack: Vec::with_capacity(u8::MAX as usize),//RefCell::new(Vec::new()),
-            stack_top: 0,//Cell::new(0),
+            stack: Vec::with_capacity(u8::MAX as usize), //RefCell::new(Vec::new()),
+            stack_top: 0,                                //Cell::new(0),
             globals: HashMap::new(),
         };
 
@@ -59,18 +50,17 @@ impl VM {
     }
 
     pub fn run_prompt(&mut self) -> io::Result<()> {
-        let mut line = String::from("  ");
         let stdin = io::stdin();
         let mut stdout = io::stdout();
 
-        while line.len() > 1 {
-            line.clear();
+        while self.source.len() > 1 {
+            self.source.clear();
             print!("lox> ");
             let _ = stdout.flush();
-            stdin.read_line(&mut line)?;
-            match self.interpret(&line) {
+            stdin.read_line(&mut self.source)?;
+            match self.interpret() {
                 Ok(()) => {}
-                Err(e) => eprint!("{}", e),
+                Err(es) => es.iter().for_each(|e| eprint!("{}", e)),
             }
         }
 
@@ -79,21 +69,18 @@ impl VM {
 
     pub fn run_file(&mut self, script_path: &str) -> io::Result<()> {
         let mut script_file = File::open(script_path)?;
-        let mut script = String::new();
-        script_file.read_to_string(&mut script)?;
+        script_file.read_to_string(&mut self.source)?;
 
-        match self.interpret(&script) {
+        match self.interpret() {
             Ok(()) => {}
-            Err(e) => eprintln!("{}", e),
+            Err(es) => es.iter().for_each(|e| eprint!("{}", e)),
         }
 
         Ok(())
     }
 
-    fn interpret(&mut self, source: &str) -> Result<(), InterpretError> {
-        let function = Compiler::new(source, FunctionType::Script)
-            .compile()
-            .map_err(|e| InterpretError::CompileError(e))?;
+    fn interpret(&mut self) -> Result<(), Vec<Error>> {
+        let function = Compiler::new(&self.source, FunctionType::Script).compile()?;
 
         function.deref().borrow_mut().name = Object::String("script".to_string());
 
@@ -101,13 +88,13 @@ impl VM {
         let closure = Closure(Rc::clone(&function));
         self.pop();
         self.push(Value::Obj(Box::new(Object::Closure(closure.clone()))));
-        self.call(closure, 0, 0)?;
+        self.call(closure, 0, 0).map_err(|e| vec![e])?;
 
-        self.run()
+        self.run().map_err(|e| vec![e])
     }
 
     // Note: assumes theres is a callframe at the top of self.frames
-    fn run(&mut self) -> Result<(), InterpretError> {
+    fn run(&mut self) -> Result<(), Error> {
         let mut curr_frame = self.frames.len() - 1;
 
         macro_rules! frame {
@@ -161,6 +148,17 @@ impl VM {
                 val
             }};
         }
+        macro_rules! error {
+            ($message:expr) => {{
+                let line = get_line!();
+                self.emit_error($message).at_line(line).with_content(
+                    self.source
+                        .lines()
+                        .nth(line - 1)
+                        .expect("Error at a line that doesn't exist."),
+                )
+            }};
+        }
 
         macro_rules! binary_op_number {
             ($op:tt) => {
@@ -172,11 +170,10 @@ impl VM {
                             }
                         }
                     },
-                    _ => return Err(InterpretError::RuntimeError(LoxError::new("Operands must be two numbers", get_line!())))
+                    _ => return Err(error!("Operands must be two numbers"))
                 }
             };
         }
-
 
         if DEBUG {
             println!("\n== VM BACKTRACE ==")
@@ -204,7 +201,7 @@ impl VM {
                 OpCode::Closure => {
                     let fun = if let Value::Obj(box Object::Function(fun)) = read_constant!() {
                         fun
-                    } else { 
+                    } else {
                         unreachable!()
                     };
                     let closure = Value::Obj(Box::new(Object::Closure(Closure(Rc::clone(&fun)))));
@@ -254,10 +251,7 @@ impl VM {
                             let value = value.clone();
                             self.push(value);
                         } else {
-                            return Err(InterpretError::RuntimeError(LoxError::new(
-                                "Undefined variable.",
-                                get_line!(),
-                            )));
+                            return Err(error!("Undefined variable."));
                         }
                     }
                 }
@@ -267,10 +261,7 @@ impl VM {
                         if self.globals.contains_key(&name) {
                             self.globals.insert(name, self.peek(0).clone());
                         } else {
-                            return Err(InterpretError::RuntimeError(LoxError::new(
-                                "Undefined variable.",
-                                get_line!(),
-                            )));
+                            return Err(error!("Undefined variable."));
                         }
                     }
                 }
@@ -304,12 +295,7 @@ impl VM {
                             }
                         }
                     }
-                    _ => {
-                        return Err(InterpretError::RuntimeError(LoxError::new(
-                            "Operands must be two numbers",
-                            get_line!(),
-                        )))
-                    }
+                    _ => return Err(error!("Operands must be two numbers")),
                 },
                 OpCode::Less => match (self.peek(0), self.peek(1)) {
                     (Value::Number(_), Value::Number(_)) => {
@@ -319,12 +305,7 @@ impl VM {
                             }
                         }
                     }
-                    _ => {
-                        return Err(InterpretError::RuntimeError(LoxError::new(
-                            "Operands must be two numbers",
-                            get_line!(),
-                        )))
-                    }
+                    _ => return Err(error!("Operands must be two numbers")),
                 },
 
                 OpCode::Add => {
@@ -347,10 +328,7 @@ impl VM {
                             _ => unreachable!(),
                         }
                     } else {
-                        return Err(InterpretError::RuntimeError(LoxError::new(
-                            "Operands must be two numbers",
-                            get_line!(),
-                        )));
+                        return Err(error!("Operands must be two numbers"));
                     }
                 }
                 OpCode::Substract => binary_op_number!(-),
@@ -361,22 +339,14 @@ impl VM {
                     if let &Value::Number(x) = self.peek(0) {
                         self.stack[self.stack_top - 1] = Value::Number(-x);
                     } else {
-                        return Err(InterpretError::RuntimeError(LoxError::new(
-                            "Operand must be a number",
-                            get_line!(),
-                        )));
+                        return Err(error!("Operand must be a number"));
                     }
                 }
-                OpCode::Not => { 
+                OpCode::Not => {
                     let poped = self.pop().is_falsey();
                     self.push(Value::Bool(poped));
                 }
-                _ => {
-                    return Err(InterpretError::CompileError(LoxError::new(
-                        "Unknown OpCode",
-                        get_line!(),
-                    )))
-                }
+                _ => return Err(error!("Unknown OpCode")),
             }
         }
         Ok(())
@@ -405,45 +375,35 @@ impl VM {
         &self.stack[self.stack_top - 1 - distance]
     }
 
-    fn call_value(
-        &mut self,
-        callee: Value,
-        arg_count: usize,
-        line: usize,
-    ) -> Result<(), InterpretError> {
+    fn call_value(&mut self, callee: Value, arg_count: usize, line: usize) -> Result<(), Error> {
         if callee.is_closure() || callee.is_native() {
             match callee {
                 Value::Obj(box Object::Closure(c)) => self.call(c, arg_count, line),
                 Value::Obj(box Object::Native(f)) => {
                     let result = f.0.deref()(
                         arg_count,
-                        &self.stack[(self.stack_top-arg_count)..self.stack_top],
+                        &self.stack[(self.stack_top - arg_count)..self.stack_top],
                     );
-                    self.stack_top -= arg_count + 1; 
+                    self.stack_top -= arg_count + 1;
                     self.push(result);
                     Ok(())
                 }
                 _ => unreachable!(),
             }
         } else {
-            Err(InterpretError::RuntimeError(LoxError::new(
-                "Can only call functions and classes.",
-                line,
-            )))
+            Err(self
+                .emit_error("Can only call functions and classes.")
+                .at_line(line)
+                .with_content(self.source.lines().nth(line).unwrap()))
         }
     }
 
-    fn call(
-        &mut self,
-        closure: Closure,
-        arg_count: usize,
-        line: usize,
-    ) -> Result<(), InterpretError> {
+    fn call(&mut self, closure: Closure, arg_count: usize, line: usize) -> Result<(), Error> {
         if closure.0.deref().borrow().arity != arg_count {
-            return Err(InterpretError::RuntimeError(LoxError::new(
-                "Wrong number of arguments.",
-                line,
-            )));
+            return Err(self
+                .emit_error("Wrong number of arguments.")
+                .at_line(line)
+                .with_content(self.source.lines().nth(line).unwrap()));
         }
         self.frames.push(CallFrame {
             closure,
@@ -470,6 +430,6 @@ fn clock_native(_: usize, _: &[Value]) -> Value {
         time::SystemTime::now()
             .duration_since(time::UNIX_EPOCH)
             .unwrap()
-            .as_secs_f64(), 
+            .as_secs_f64(),
     )
 }

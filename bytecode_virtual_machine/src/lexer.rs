@@ -1,6 +1,5 @@
-use crate::LoxError;
-
 use crate::define_enum;
+use crate::error::{EmitError, Error};
 
 define_enum! {
     TokenType,
@@ -72,16 +71,29 @@ impl Token {
 }
 
 #[derive(Clone, Debug)]
-pub struct Lexer<'sca> {
-    pub(crate) source: &'sca str,
+pub struct Lexer<'source> {
+    pub(crate) source: &'source str,
     pub(crate) source_chars: Vec<char>,
     pub(crate) start: usize,
     pub(crate) current: usize,
     pub(crate) line: usize,
 }
 
-impl<'sca> Lexer<'sca> {
-    pub fn new(source: &'sca str) -> Self {
+impl<'l> EmitError for Lexer<'l> {
+    fn emit_error(&self, message: &str) -> Error {
+        Error::new(
+            self.source
+                .lines()
+                .nth(self.line)
+                .expect("Error at a line that doesn't exist."),
+            message,
+            self.line,
+        )
+    }
+}
+
+impl<'source> Lexer<'source> {
+    pub fn new(source: &'source str) -> Self {
         Self {
             source,
             source_chars: source.chars().collect(),
@@ -91,7 +103,7 @@ impl<'sca> Lexer<'sca> {
         }
     }
 
-    pub fn scan_token(&mut self) -> Result<Token, LoxError> {
+    pub fn scan_token(&mut self) -> Result<Token, Error> {
         self.skip_white_space();
         self.start = self.current;
 
@@ -149,7 +161,7 @@ impl<'sca> Lexer<'sca> {
 
             c if c.is_ascii_alphabetic() || c == '_' => self.make_identifier_token(),
 
-            _ => Err(LoxError::new("Unexpected character", self.line)),
+            _ => Err(self.emit_error("Unexpected character")),
         }
     }
 
@@ -212,7 +224,7 @@ impl<'sca> Lexer<'sca> {
         Token::new(ty, self.start, self.current - self.start, self.line)
     }
 
-    fn make_string_token(&mut self) -> Result<Token, LoxError> {
+    fn make_string_token(&mut self) -> Result<Token, Error> {
         while self.peek() != '"' && !self.is_at_end() {
             if self.peek() == '\n' {
                 self.line += 1;
@@ -221,7 +233,7 @@ impl<'sca> Lexer<'sca> {
         }
 
         if self.is_at_end() {
-            return Err(LoxError::new("Unterminated string.", self.line));
+            return Err(self.emit_error("Unterminated string."));
         }
 
         self.advance();
@@ -229,7 +241,7 @@ impl<'sca> Lexer<'sca> {
         Ok(self.make_token(TokenType::String))
     }
 
-    fn make_number_token(&mut self) -> Result<Token, LoxError> {
+    fn make_number_token(&mut self) -> Result<Token, Error> {
         while self.peek().is_ascii_digit() {
             self.advance();
         }
@@ -244,7 +256,7 @@ impl<'sca> Lexer<'sca> {
         Ok(self.make_token(TokenType::Number))
     }
 
-    fn make_identifier_token(&mut self) -> Result<Token, LoxError> {
+    fn make_identifier_token(&mut self) -> Result<Token, Error> {
         while self.peek().is_alphanumeric() || self.peek() == '_' {
             self.advance();
         }
