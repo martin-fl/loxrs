@@ -84,11 +84,12 @@ impl<'l> EmitError for Lexer<'l> {
         Error::new(
             self.source
                 .lines()
-                .nth(self.line)
+                .nth(self.line - 1)
                 .expect("Error at a line that doesn't exist."),
             message,
             self.line,
         )
+        .with_span(self.current - 1, 1)
     }
 }
 
@@ -161,7 +162,7 @@ impl<'source> Lexer<'source> {
 
             c if c.is_ascii_alphabetic() || c == '_' => self.make_identifier_token(),
 
-            _ => Err(self.emit_error("Unexpected character")),
+            _ => Err(self.emit_error(&format!("unexpected character '{}'", c))),
         }
     }
 
@@ -233,7 +234,7 @@ impl<'source> Lexer<'source> {
         }
 
         if self.is_at_end() {
-            return Err(self.emit_error("Unterminated string."));
+            return Err(self.emit_error("unterminated string"));
         }
 
         self.advance();
@@ -292,13 +293,7 @@ impl<'source> Lexer<'source> {
         }
     }
 
-    fn check_keyword(
-        &self,
-        start: usize,
-        len: usize,
-        rest: &'static str,
-        ty: TokenType,
-    ) -> TokenType {
+    fn check_keyword(&self, start: usize, len: usize, rest: &str, ty: TokenType) -> TokenType {
         if self.current - self.start == start + len
             && &self.source[(self.start + start)..(self.start + start + len)] == rest
         {

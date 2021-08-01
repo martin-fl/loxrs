@@ -195,7 +195,7 @@ impl<'c> Compiler<'c> {
     fn make_constant(&mut self, value: Value) -> u8 {
         let constant = (*self.current_chunk()).borrow_mut().add_constant(value);
         if constant > std::u8::MAX as usize {
-            self.new_error(self.emit_error("Too many constants in one chunk."));
+            self.new_error(self.emit_error("too many constants in one chunk"));
             0
         } else {
             constant as u8
@@ -230,7 +230,7 @@ impl<'c> Compiler<'c> {
         let jump = (*current_chunk).borrow().instructions.len() - offset - 2;
 
         if jump > u16::MAX as usize {
-            self.new_error(self.emit_error("Too much code to jump over."));
+            self.new_error(self.emit_error("too much code to jump over"));
         }
 
         (*current_chunk).borrow_mut().instructions[offset] = ((jump >> 8) & 0xFF) as u8;
@@ -241,7 +241,7 @@ impl<'c> Compiler<'c> {
         self.emit_byte(OpCode::Loop as u8);
         let offset = (*self.current_chunk()).borrow().instructions.len() - loop_start + 2;
         if offset > u16::MAX as usize {
-            self.new_error(self.emit_error("Loop body too large"));
+            self.new_error(self.emit_error("loop body too large"));
         }
         self.emit_byte(((offset >> 8) & 0xFF) as u8);
         self.emit_byte((offset & 0xFF) as u8);
@@ -266,7 +266,7 @@ impl<'c> Compiler<'c> {
 
     fn grouping(&mut self, _: bool) {
         self.expression();
-        self.consume_if_current_is(TokenType::RightParen, "Expected ')' after expression.");
+        self.consume_if_current_is(TokenType::RightParen, "expected ')' after expression");
     }
 
     fn number(&mut self, _: bool) {
@@ -358,7 +358,9 @@ impl<'c> Compiler<'c> {
             loop {
                 self.expression();
                 if arg_count == 255 {
-                    self.new_error(self.emit_error("Can't have more than 255 arguments."));
+                    self.new_error(
+                        self.emit_error("can't have more than 255 arguments to a function"),
+                    );
                 }
                 arg_count += 1;
                 if !self.advance_if_current_is(TokenType::Comma) {
@@ -366,7 +368,7 @@ impl<'c> Compiler<'c> {
                 }
             }
         }
-        self.consume_if_current_is(TokenType::RightParen, "Expected ')' after arguments.");
+        self.consume_if_current_is(TokenType::RightParen, "expected ')' after arguments");
         arg_count
     }
 
@@ -398,7 +400,7 @@ impl<'c> Compiler<'c> {
             if self.identifiers_are_equal(&self.locals[i].name, &name) {
                 if !self.locals[i].is_initialized {
                     self.new_error(
-                        self.emit_error("Can't read local variable in its own initializer"),
+                        self.emit_error("can't read local variable in its own initializer"),
                     );
                 }
                 return Some(i as u8);
@@ -421,7 +423,7 @@ impl<'c> Compiler<'c> {
                     (infix_rule.unwrap())(self, can_assign);
 
                     if can_assign && self.advance_if_current_is(TokenType::Equal) {
-                        self.new_error(self.emit_error("Invalid assignment target."))
+                        self.new_error(self.emit_error("invalid assignment target"))
                     }
                 }
             }
@@ -432,7 +434,7 @@ impl<'c> Compiler<'c> {
                         [self.previous.start..(self.previous.start + self.previous.len)],
                     self.previous
                 );
-                self.new_error(self.emit_error("Expected expression."));
+                self.new_error(self.emit_error("expected expression"));
                 return;
             }
         }
@@ -457,7 +459,7 @@ impl<'c> Compiler<'c> {
     }
 
     fn fun_declaration(&mut self) {
-        let global = self.parse_variable("Expected function name.");
+        let global = self.parse_variable("expected function name");
         self.mark_initialized();
         self.function(FunctionType::Function);
         self.define_variable(global);
@@ -466,14 +468,16 @@ impl<'c> Compiler<'c> {
     fn function(&mut self, ty: FunctionType) {
         let mut compiler = Compiler::new_from(self.clone(), ty);
         compiler.begin_scope();
-        compiler.consume_if_current_is(TokenType::LeftParen, "Expected '(' after function name.");
+        compiler.consume_if_current_is(TokenType::LeftParen, "expected '(' after function name");
         if !compiler.current_is(TokenType::RightParen) {
             loop {
                 compiler.function.deref().borrow_mut().arity += 1;
                 if compiler.function.deref().borrow_mut().arity > 255 {
-                    compiler.new_error(self.emit_error("Can't have more than 255 parameters."));
+                    compiler.new_error(
+                        self.emit_error("can't have more than 255 parameters to a function"),
+                    );
                 }
-                let constant = compiler.parse_variable("Expected parameter name.");
+                let constant = compiler.parse_variable("expected parameter name");
                 compiler.define_variable(constant);
 
                 if !self.advance_if_current_is(TokenType::Comma) {
@@ -484,9 +488,9 @@ impl<'c> Compiler<'c> {
 
         compiler.consume_if_current_is(
             TokenType::RightParen,
-            "Expected ')' after function parameters.",
+            "expected ')' after function parameters",
         );
-        compiler.consume_if_current_is(TokenType::LeftBrace, "Expected '{' before function body.");
+        compiler.consume_if_current_is(TokenType::LeftBrace, "expected '{' before function body");
         compiler.block();
 
         let function = compiler.end_compilation();
@@ -499,13 +503,12 @@ impl<'c> Compiler<'c> {
                 self.make_constant(Value::Obj(Box::new(Object::Function(Rc::clone(&function)))));
             self.emit_bytes(OpCode::Closure as u8, constant);
         } else {
-            //self.new_error(function.unwrap_err());
             self.errors.append(&mut function.unwrap_err());
         }
     }
 
     fn var_declaration(&mut self) {
-        let global = self.parse_variable("Expected a variable name.");
+        let global = self.parse_variable("expected a variable name");
 
         if self.advance_if_current_is(TokenType::Equal) {
             self.expression();
@@ -515,13 +518,13 @@ impl<'c> Compiler<'c> {
 
         self.consume_if_current_is(
             TokenType::Semicolon,
-            "Expected ';' after variable declaration.",
+            "expected ';' after variable declaration",
         );
 
         self.define_variable(global);
     }
 
-    fn parse_variable(&mut self, error_message: &'static str) -> u8 {
+    fn parse_variable(&mut self, error_message: &str) -> u8 {
         self.consume_if_current_is(TokenType::Identifier, error_message);
         self.declare_variable();
         if self.scope_depth > 0 {
@@ -564,7 +567,7 @@ impl<'c> Compiler<'c> {
                 //    "Already a variable with this name in this scope.",
                 //    name,
                 //));
-                self.new_error(self.emit_error("Already a variable with this name in this scope."));
+                self.new_error(self.emit_error("already a variable with this name in this scope"));
             }
         }
 
@@ -577,7 +580,7 @@ impl<'c> Compiler<'c> {
             //    "Too many local variables in function.",
             //    name,
             //));
-            self.new_error(self.emit_error("Too many local variables in function."));
+            self.new_error(self.emit_error("too many local variables in function"));
             return;
         }
 
@@ -611,7 +614,7 @@ impl<'c> Compiler<'c> {
         while !self.current_is(TokenType::RightBrace) && !self.current_is(TokenType::EOF) {
             self.declaration();
         }
-        self.consume_if_current_is(TokenType::RightBrace, "Expect '}' after block.");
+        self.consume_if_current_is(TokenType::RightBrace, "expected '}' after block");
     }
 
     fn begin_scope(&mut self) {
@@ -629,14 +632,14 @@ impl<'c> Compiler<'c> {
 
     fn expression_statement(&mut self) {
         self.expression();
-        self.consume_if_current_is(TokenType::Semicolon, "Expected ';' after expression.");
+        self.consume_if_current_is(TokenType::Semicolon, "expected ';' after expression");
         self.emit_byte(OpCode::Pop as u8);
     }
 
     fn for_statement(&mut self) {
         self.begin_scope();
 
-        self.consume_if_current_is(TokenType::LeftParen, "Expected '(' after 'for'.");
+        self.consume_if_current_is(TokenType::LeftParen, "expected '(' after 'for'");
 
         if self.advance_if_current_is(TokenType::Semicolon) {
         } else if self.advance_if_current_is(TokenType::Var) {
@@ -649,7 +652,7 @@ impl<'c> Compiler<'c> {
 
         let exit_jump = if !self.advance_if_current_is(TokenType::Semicolon) {
             self.expression();
-            self.consume_if_current_is(TokenType::Semicolon, "Expect ';' after loop condition");
+            self.consume_if_current_is(TokenType::Semicolon, "expected ';' after loop condition");
 
             let exit_jump = self.emit_jump(OpCode::JumpIfFalse);
             self.emit_byte(OpCode::Pop as u8);
@@ -664,7 +667,7 @@ impl<'c> Compiler<'c> {
             let increment_start = (*self.current_chunk()).borrow().instructions.len();
             self.expression();
             self.emit_byte(OpCode::Pop as u8);
-            self.consume_if_current_is(TokenType::RightParen, "Expect ')' after for clauses.");
+            self.consume_if_current_is(TokenType::RightParen, "expected ')' after for clauses");
 
             self.emit_loop(loop_start);
             loop_start = increment_start;
@@ -683,9 +686,9 @@ impl<'c> Compiler<'c> {
     }
 
     fn if_statement(&mut self) {
-        self.consume_if_current_is(TokenType::LeftParen, "Expected '(' after 'if'.");
+        self.consume_if_current_is(TokenType::LeftParen, "expected '(' after 'if'");
         self.expression();
-        self.consume_if_current_is(TokenType::RightParen, "Expected ')' after condition.");
+        self.consume_if_current_is(TokenType::RightParen, "expected ')' after condition");
 
         let then_jump = self.emit_jump(OpCode::JumpIfFalse);
         self.emit_byte(OpCode::Pop as u8);
@@ -702,29 +705,29 @@ impl<'c> Compiler<'c> {
 
     fn return_statement(&mut self) {
         if self.ty == FunctionType::Script {
-            self.new_error(self.emit_error("Can't return from top-level code"));
+            self.new_error(self.emit_error("can't return from top-level code"));
         }
 
         if self.advance_if_current_is(TokenType::Semicolon) {
             self.emit_return();
         } else {
             self.expression();
-            self.consume_if_current_is(TokenType::Semicolon, "Expected ';' after return value.");
+            self.consume_if_current_is(TokenType::Semicolon, "expected ';' after return value");
             self.emit_byte(OpCode::Return as u8);
         }
     }
 
     fn print_statement(&mut self) {
         self.expression();
-        self.consume_if_current_is(TokenType::Semicolon, "Expected ';' after expression.");
+        self.consume_if_current_is(TokenType::Semicolon, "expected ';' after expression");
         self.emit_byte(OpCode::Print as u8);
     }
 
     fn while_statement(&mut self) {
         let loop_start = (*self.current_chunk()).borrow().instructions.len();
-        self.consume_if_current_is(TokenType::LeftParen, "Expected '(' after 'while'.");
+        self.consume_if_current_is(TokenType::LeftParen, "expected '(' after 'while'");
         self.expression();
-        self.consume_if_current_is(TokenType::RightParen, "Expected ')' after condition.");
+        self.consume_if_current_is(TokenType::RightParen, "expected ')' after condition");
 
         let exit_jump = self.emit_jump(OpCode::JumpIfFalse);
         self.emit_byte(OpCode::Pop as u8);
@@ -758,7 +761,7 @@ impl<'c> Compiler<'c> {
         }
     }
 
-    fn consume_if_current_is(&mut self, ty: TokenType, message: &'static str) {
+    fn consume_if_current_is(&mut self, ty: TokenType, message: &str) {
         if self.current.ty == ty {
             self.advance();
         } else {

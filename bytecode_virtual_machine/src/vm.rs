@@ -171,7 +171,7 @@ impl VM {
                             }
                         }
                     },
-                    _ => return Err(error!("Operands must be two numbers"))
+                    _ => return Err(error!("operands must be two numbers"))
                 }
             };
         }
@@ -252,7 +252,7 @@ impl VM {
                             let value = value.clone();
                             self.push(value);
                         } else {
-                            return Err(error!(&format!("Undefined variable '{}'.", name)));
+                            return Err(error!(&format!("undefined variable '{}'", name)));
                         }
                     }
                 }
@@ -262,7 +262,7 @@ impl VM {
                         if self.globals.contains_key(&name) {
                             self.globals.insert(name, self.peek(0).clone());
                         } else {
-                            return Err(error!(&format!("Undefined variable '{}'.", name)));
+                            return Err(error!(&format!("undefined variable '{}'", name)));
                         }
                     }
                 }
@@ -296,7 +296,7 @@ impl VM {
                             }
                         }
                     }
-                    _ => return Err(error!("Operands must be two numbers")),
+                    _ => return Err(error!("operands must be two numbers")),
                 },
                 OpCode::Less => match (self.peek(0), self.peek(1)) {
                     (Value::Number(_), Value::Number(_)) => {
@@ -306,7 +306,7 @@ impl VM {
                             }
                         }
                     }
-                    _ => return Err(error!("Operands must be two numbers")),
+                    _ => return Err(error!("operands must be two numbers")),
                 },
 
                 OpCode::Add => {
@@ -329,7 +329,7 @@ impl VM {
                             _ => unreachable!(),
                         }
                     } else {
-                        return Err(error!("Operands must be two numbers"));
+                        return Err(error!("operands must be two numbers or two strings"));
                     }
                 }
                 OpCode::Substract => binary_op_number!(-),
@@ -340,14 +340,14 @@ impl VM {
                     if let &Value::Number(x) = self.peek(0) {
                         self.stack[self.stack_top - 1] = Value::Number(-x);
                     } else {
-                        return Err(error!("Operand must be a number"));
+                        return Err(error!("operand must be a number"));
                     }
                 }
                 OpCode::Not => {
                     let poped = self.pop().is_falsey();
                     self.push(Value::Bool(poped));
                 }
-                _ => return Err(error!("Unknown OpCode")),
+                _ => return Err(error!("unknown opcode")),
             }
         }
         Ok(())
@@ -393,7 +393,7 @@ impl VM {
             }
         } else {
             Err(self
-                .emit_error("Can only call functions and classes.")
+                .emit_error("can only call functions and classes")
                 .at_line(line)
                 .with_content(self.source.lines().nth(line - 1).unwrap()))
         }
@@ -402,7 +402,7 @@ impl VM {
     fn call(&mut self, closure: Closure, arg_count: usize, line: usize) -> Result<(), Error> {
         if closure.0.deref().borrow().arity != arg_count {
             return Err(self
-                .emit_error("Wrong number of arguments.")
+                .emit_error("wrong number of arguments")
                 .at_line(line)
                 .with_content(self.source.lines().nth(line - 1).unwrap()));
         }
