@@ -95,9 +95,8 @@ impl Prompt {
                                 execute!(stdout, MoveToNextLine(1), Print(&self.indent))?;
                             }
                             buffer.push('\n');
+                            write_head += 1;
                             line_ends.push(x!());
-                        } else {
-                            //TODO: shift everything down one row
                         }
                     }
                 }
