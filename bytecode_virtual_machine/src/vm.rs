@@ -52,10 +52,11 @@ impl VM {
 
     pub fn run_prompt(&mut self) -> io::Result<()> {
         let mut prompt = Prompt::new("lox> ");
-        println!("Validate an empty line to quit.");
-        self.source = "  ".to_string();
-        while self.source.len() > 1 {
-            self.source = prompt.ask()?;
+        loop {
+            match prompt.ask()? {
+                Some(source) => self.source = source,
+                None => break,
+            }
             match self.interpret() {
                 Ok(()) => {}
                 Err(es) => es.iter().for_each(|e| eprint!("{}", e)),
@@ -209,6 +210,7 @@ impl VM {
                     let result = self.pop();
                     if self.frames.len() == 1 {
                         self.pop();
+                        self.frames.pop();
                         return Ok(());
                     }
                     let top = frame!().slots;

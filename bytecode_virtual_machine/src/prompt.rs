@@ -10,7 +10,7 @@ use crossterm::{
     event::{self, Event, KeyCode, KeyEvent, KeyModifiers},
     execute,
     style::Print,
-    terminal::{self, ScrollUp, Clear, ClearType},
+    terminal::{self, Clear, ClearType, ScrollUp},
     Command,
 };
 
@@ -22,7 +22,7 @@ pub struct Prompt {
 
 impl Prompt {
     pub fn new(prompt: &str) -> Self {
-        println!("Press enter twice to validate.");
+        println!("Press enter twice to validate and Ctrl+C to exit.");
         let mut indent = " ".repeat(prompt.len() - 2);
         indent.push('|');
         indent.push(' ');
@@ -33,34 +33,40 @@ impl Prompt {
         }
     }
 
-    pub fn ask(&mut self) -> io::Result<String> {
+    pub fn ask(&mut self) -> io::Result<Option<String>> {
         let mut stdout = io::stdout();
         let mut buffer = String::new();
         let mut prev: KeyCode = KeyCode::Null;
-
 
         terminal::enable_raw_mode().unwrap();
 
         execute!(stdout, Print(&self.prompt))?;
 
-        let (left_, top_) = cursor::position()?; 
+        let (left_, top_) = cursor::position()?;
         let (left, mut top) = (left_ as usize, top_ as usize);
 
         macro_rules! x {
-            () => {cursor::position()?.0 as usize - left}
+            () => {
+                cursor::position()?.0 as usize - left
+            };
         }
         macro_rules! y {
-            () => {cursor::position()?.1 as usize - top}
+            () => {
+                cursor::position()?.1 as usize - top
+            };
         }
-        
+
         let mut line_ends = vec![0];
 
         macro_rules! line_end {
-            () => {line_ends[y!()]}
+            () => {
+                line_ends[y!()]
+            };
         }
 
         while let Event::Key(KeyEvent { code, modifiers }) = event::read()? {
             match (code, modifiers) {
+                (KeyCode::Char('c'), KeyModifiers::CONTROL) => return Ok(None),
                 (KeyCode::Enter, _) => {
                     if let KeyCode::Enter = prev {
                         execute!(stdout, MoveToColumn(0), Clear(ClearType::UntilNewLine))?;
@@ -68,10 +74,15 @@ impl Prompt {
                     } else {
                         if y!() == line_ends.len() - 1 {
                             if cursor::position()?.1 + 1 == terminal::size()?.1 {
-                                execute!(stdout, ScrollUp(1), MoveToNextLine(1), Print(&self.indent))?;
+                                execute!(
+                                    stdout,
+                                    ScrollUp(1),
+                                    MoveToNextLine(1),
+                                    Print(&self.indent)
+                                )?;
                                 top -= 1;
                             } else {
-                                execute!(stdout, MoveToNextLine(1), Print(&self.indent))?; 
+                                execute!(stdout, MoveToNextLine(1), Print(&self.indent))?;
                             }
                             buffer.push('\n');
                             line_ends.push(x!());
@@ -132,6 +143,6 @@ impl Prompt {
         terminal::disable_raw_mode().unwrap();
 
         self.history.push(buffer.clone());
-        Ok(buffer)
+        Ok(Some(buffer))
     }
 }

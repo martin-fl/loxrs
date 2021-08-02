@@ -8,7 +8,7 @@ pub mod prompt;
 pub mod value;
 pub mod vm;
 
-const DEBUG: bool = false;
+const DEBUG: bool = true;
 
 #[macro_export]
 macro_rules! define_enum {
