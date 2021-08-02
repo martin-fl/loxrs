@@ -57,9 +57,18 @@ impl VM {
                 Some(source) => self.source = source,
                 None => break,
             }
+            // XXX: When a runtime error occurs, we currently don't clean up the callframe where
+            // the error originated. That means that the callframe is still in the callstack and
+            // its execution can resume, which should not happen.
+            // temporary solution: clear everything
             match self.interpret() {
                 Ok(()) => {}
-                Err(es) => es.iter().for_each(|e| eprint!("{}", e)),
+                Err(es) => {
+                    self.frames.truncate(0);
+                    self.stack.truncate(0);
+                    self.stack_top = 0;
+                    es.iter().for_each(|e| eprint!("{}", e));
+                }
             }
         }
 
